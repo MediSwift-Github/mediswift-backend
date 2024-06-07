@@ -329,7 +329,7 @@ async function endSessionActions(chatId, messageId) {
 
     if (success) {
         // Send the conversation summary to the user
-        await sendReply(chatId, `Here's a summary of our conversation: ${content}`, messageId);
+        // await sendReply(chatId, `Here's a summary of our conversation: ${content}`, messageId);
 
         // Find the patient record to store the summary
         const queueEntry = await Queue.findOne({ patientMobileNumber: chatId.toString() }).exec();
@@ -345,7 +345,7 @@ async function endSessionActions(chatId, messageId) {
     }
 
     // Notify the user that their session has ended
-    await sendReply(chatId, "Thank you. I have recorded all your information and forwarded it to the doctor. The doctor will attend to you shortly.\n\n\"धन्यवाद। मैंने आपकी सभी जानकारी दर्ज कर ली है और उसे डॉक्टर को भेज दिया है। डॉक्टर कुछ ही मिनटों में आपसे मिलेंगे।\"", messageId);
+    await sendReply(chatId, "Session Complete. Thank you. I have recorded all your information and forwarded it to the doctor. The doctor will attend to you shortly.\n\n\"धन्यवाद। मैंने आपकी सभी जानकारी दर्ज कर ली है और उसे डॉक्टर को भेज दिया है। डॉक्टर कुछ ही मिनटों में आपसे मिलेंगे।\"", messageId);
     // Clean up session data
     delete sessionStartTimes[chatId];
     delete conversationHistory[chatId];

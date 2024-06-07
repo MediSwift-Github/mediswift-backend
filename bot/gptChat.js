@@ -122,9 +122,8 @@ async function transcribeAudio(audioFilePath) {
         const formData = new FormData();
         formData.append('file', fs.createReadStream(fullPath));
         formData.append('model', 'whisper-1');
-        formData.append('language', 'en'); // Target language is English
         // Log the headers and API URL before the request
-        const apiURL = 'https://api.openai.com/v1/audio/translations';
+        const apiURL = 'https://api.openai.com/v1/audio/transcriptions';
         console.log('API URL:', apiURL);
         console.log('Headers:', { ...formData.getHeaders(), 'Authorization': `Bearer ${process.env.OPENAI_API_KEY}` });
 
