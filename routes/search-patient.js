@@ -9,7 +9,7 @@ router.get('/api/searchpatient', async (req, res) => {
 
         // Use a case-insensitive regular expression to find patients whose names start with the provided input
         const searchPattern = new RegExp('^' + name, 'i');
-        const patients = await Patient.find({ name: { $regex: searchPattern } }, 'name _id'); // Project only name and _id
+        const patients = await Patient.find({ name: { $regex: searchPattern } }, 'name _id mobile_number'); // Project only name and _id
 
         // Send the list of matching patient names and their _id
         res.status(200).send(patients);
