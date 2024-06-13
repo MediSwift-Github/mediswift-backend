@@ -16,22 +16,19 @@ async function storeSessionSummary(patientId, summaryJSON) {
 
 async function storeTranscription(patientId, transcription, summaryDate) {
     try {
-        // Parse the incoming date and create a range for the entire day
         const dateStart = new Date(summaryDate);
         dateStart.setHours(0, 0, 0, 0);
         const dateEnd = new Date(summaryDate);
-        dateEnd.setDate(dateEnd.getDate() + 1); // Move to the next day
+        dateEnd.setDate(dateEnd.getDate() + 1);
         dateEnd.setHours(0, 0, 0, 0);
 
-        // Find the patient document
-        const patient = await Patient.findById(patientId);
 
+        const patient = await Patient.findById(patientId);
         if (!patient) {
-            console.error("Patient not found");
-            return;
+            console.error(`Patient with ID ${patientId} not found`);
+            return false;
         }
 
-        // Check if a session summary exists for the given date range
         const existingSummary = patient.sessionSummaries.find(s => {
             const sDate = new Date(s.summaryDate);
             sDate.setHours(0, 0, 0, 0);
@@ -39,24 +36,19 @@ async function storeTranscription(patientId, transcription, summaryDate) {
         });
 
         if (existingSummary) {
-            // If an existing summary is found, update its transcription
             existingSummary.transcription = transcription;
-            console.log("Transcription updated in existing summary.");
         } else {
-            // If no summary exists, create a new one with the transcription
             patient.sessionSummaries.push({
                 summaryDate: dateStart,
                 transcription: transcription,
-                summaryContent: "" // Initialize with empty summaryContent
+                summaryContent: "" // Initialize with empty content if necessary
             });
-            console.log("New summary created with transcription.");
         }
 
-        // Save the patient document
         await patient.save();
-        console.log("Successfully stored transcription.");
+        return true; // Return true to indicate success
     } catch (error) {
-        console.error("Error storing transcription:", error);
+        return false; // Return false or throw an error to handle it upstream
     }
 }
 

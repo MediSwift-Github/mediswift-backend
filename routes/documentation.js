@@ -47,7 +47,7 @@ router.get('/getSummary', async (req, res) => {
 });
 
 async function createEHRentry(summaryContent, transcription) {
-    return await createOpenAIResponse("You are a highly proficient medical assistant with extensive knowledge in medical jargon, designed to output comprehensive and detailed JSON. Given a summary of the purpose of visit received through a text conversation before the consultation and a transcription of the conversation between doctor and patient, output a structured JSON object suitable for a medical record(doctor's notes). Ensure the output is highly detailed, technically accurate, and includes every single detail mentioned in the transcription and summary. The JSON object should cover all medical details of the visit. Output only the JSON object.", summaryContent, transcription);
+    return await createOpenAIResponse("You are a highly proficient medical assistant with extensive knowledge in medical jargon, designed to output comprehensive and detailed JSON. Given a summary of the purpose of visit received through a text conversation before the consultation and a transcription of the conversation between doctor and patient, output a structured JSON object suitable for a medical record(doctor's notes). Ensure the output is highly detailed, technically accurate, and includes every single detail mentioned in the transcription and summary. The JSON object should cover all medical details of the visit. Output only the JSON object. Language of the health record should be English", summaryContent, transcription);
 }
 
 async function createHandout(summaryContent, transcription, userId) {
