@@ -11,18 +11,17 @@ const createToken = (_id) => {
 router.post("/api/login", async (req, res) => {
   const { username, password } = req.body;
   console.log(
-    `Attempting to find user: ${username} with password: ${password}`
+      `Attempting to find user: ${username} with password: ${password}`
   ); // Debug log
   try {
-    const user = await User.findOne({ _id: username });
+    const user = await User.findOne({ username: username });
     console.log(user); // This logs null if user not found
-
-    const token = createToken(user._id);
-
-    console.log("token-->>", token);
 
     if (user && user.password === password) {
       // Authentication successful
+      const token = createToken(user._id);
+      console.log("token-->>", token);
+
       res.json({
         message: "Authentication successful",
         role: user.role,
@@ -35,9 +34,10 @@ router.post("/api/login", async (req, res) => {
   } catch (error) {
     console.error("Login error:", error);
     res
-      .status(500)
-      .json({ message: "An error occurred. Please try again later." });
+        .status(500)
+        .json({ message: "An error occurred. Please try again later." });
   }
 });
+
 
 module.exports = router;
