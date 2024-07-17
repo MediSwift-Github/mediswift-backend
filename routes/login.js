@@ -4,38 +4,28 @@ const router = express.Router();
 const User = require("../database/users"); // Make sure this path is correct
 const jwt = require("jsonwebtoken");
 
-const createToken = (_id) => {
-  return jwt.sign({ _id }, process.env.SECRET, { expiresIn: "3d" });
+const createToken = (user) => {
+  const payload = { _id: user._id, hospital_id: user.hospital_id };
+
+  return jwt.sign(payload, process.env.SECRET, { expiresIn: "3d" });
 };
 
 router.post("/api/login", async (req, res) => {
   const { username, password } = req.body;
-  console.log(
-      `Attempting to find user: ${username} with password: ${password}`
-  ); // Debug log
   try {
     const user = await User.findOne({ username: username });
-    console.log(user); // This logs null if user not found
-
     if (user && user.password === password) {
-      // Authentication successful
-      const token = createToken(user._id);
-      console.log("token-->>", token);
-
+      const token = createToken(user);
       res.json({
         message: "Authentication successful",
         role: user.role,
         token,
       });
     } else {
-      // Authentication failed
       res.status(401).json({ message: "Authentication failed" });
     }
   } catch (error) {
-    console.error("Login error:", error);
-    res
-        .status(500)
-        .json({ message: "An error occurred. Please try again later." });
+    res.status(500).json({ message: "An error occurred. Please try again later." });
   }
 });
 
