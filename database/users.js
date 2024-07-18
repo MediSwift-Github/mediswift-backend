@@ -21,7 +21,7 @@ const userSchema = new mongoose.Schema({
         required: true
     },
     hospital_id: {
-        type: String,
+        type: mongoose.Schema.Types.ObjectId,
         required: true
     }
 });
