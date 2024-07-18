@@ -57,21 +57,25 @@ router.post('/api/queue/add', async (req, res) => {
 
 // Endpoint to remove a patient from the queue or clear the entire queue
 router.delete('/api/queue/remove', async (req, res) => {
-    const { patientId, clearAll } = req.query;
+    const { patientId, clearAll, hospitalId } = req.query;
 
     try {
+        if (!hospitalId) {
+            return res.status(400).send('hospitalId query parameter is required.');
+        }
+
         if (clearAll === 'true') {
-            // Clear the entire queue
-            await Queue.deleteMany({});
-            console.log('All queue entries have been removed');
-            return res.status(200).send('All queue entries have been removed.');
+            // Clear the entire queue for the specific hospital
+            await Queue.deleteMany({ hospitalId });
+            console.log(`All queue entries for hospitalId ${hospitalId} have been removed`);
+            return res.status(200).send(`All queue entries for hospitalId ${hospitalId} have been removed.`);
         } else if (patientId) {
-            // Remove specific patient from the queue
-            const result = await Queue.findOneAndDelete({ patientId });
+            // Remove specific patient from the queue for the specific hospital
+            const result = await Queue.findOneAndDelete({ patientId, hospitalId });
             if (!result) {
-                return res.status(404).send('Patient not found in queue.');
+                return res.status(404).send('Patient not found in queue for the specified hospital.');
             }
-            console.log('Patient removed from the queue:', result);
+            console.log(`Patient removed from the queue for hospitalId ${hospitalId}:`, result);
             return res.status(200).send('Patient removed from the queue.');
         } else {
             return res.status(400).send('Please provide a patientId or set clearAll to true.');
