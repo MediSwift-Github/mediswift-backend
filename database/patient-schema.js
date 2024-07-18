@@ -14,7 +14,8 @@ const patientSchema = new Schema({
         transcription: { type: String, default: '' },
         healthRecord: { type: mongoose.Schema.Types.Mixed, default: {} },
         patientHandout: { type: mongoose.Schema.Types.Mixed, default: {} }
-    }]
+    }],
+    hospitalId: { type: Schema.Types.ObjectId, ref: 'Hospital', required: true } // Add this line
 }, { timestamps: true }); // Optionally add timestamps to automatically get createdAt and updatedAt fields
 
 const Patient = mongoose.model('Patient', patientSchema,'patients_collection');

@@ -12,7 +12,7 @@ const baseUrl = process.env.NODE_ENV === 'production' ? process.env.BASE_URL : `
 // Endpoint to add a patient to the queue
 router.post('/api/queue/add', async (req, res) => {
     try {
-        const { patientId } = req.body;
+        const { patientId, hospitalId } = req.body; // Destructure hospitalId from the request body
 
         // First, check if the patient already exists in the queue
         const existingEntry = await Queue.findOne({ patientId });
@@ -30,7 +30,8 @@ router.post('/api/queue/add', async (req, res) => {
         const queueEntry = new Queue({
             patientId,
             patientName: patient.name, // Use the patient's name from the Patient document
-            patientMobileNumber: patient.mobile_number // Use the patient's mobile number from the Patient document
+            patientMobileNumber: patient.mobile_number, // Use the patient's mobile number from the Patient document
+            hospitalId // Include the hospitalId
         });
 
         // Save the queue entry
@@ -85,7 +86,12 @@ router.delete('/api/queue/remove', async (req, res) => {
 // Endpoint to view the queue
 router.get('/api/queue', async (req, res) => {
     try {
-        const queueEntries = await Queue.find({}).sort({ queueEntryTime: 1 }).exec();
+        const { hospitalId } = req.query; // Get hospitalId from query parameters
+        if (!hospitalId) {
+            return res.status(400).send('hospitalId query parameter is required.');
+        }
+
+        const queueEntries = await Queue.find({ hospitalId }).sort({ queueEntryTime: 1 }).exec();
         if (queueEntries.length === 0) {
             console.log('No queue entries found');
             return res.status(404).send('No queue entries found.');
@@ -97,6 +103,7 @@ router.get('/api/queue', async (req, res) => {
         res.status(500).send('Error retrieving queue entries');
     }
 });
+
 // Endpoint to update the status of a queue entry
 router.patch('/api/queue/update/:id', async (req, res) => {
     try {

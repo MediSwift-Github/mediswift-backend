@@ -23,7 +23,11 @@ const queueSchema = new mongoose.Schema({
         type: String,
         enum: ['Chatting', 'Completed', 'End Chat'],
         default: 'Chatting'
-    }
+    },
+    hospitalId: {
+        type: mongoose.Schema.Types.ObjectId,
+        required: true
+    },
 });
 
 const Queue = mongoose.model('Queue', queueSchema);

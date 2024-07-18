@@ -6,13 +6,16 @@ const Patient = require('../database/patient-schema');// Adjust the path as nece
 // POST endpoint for adding a new patient
 router.post('/api/newpatient', async (req, res) => {
     try {
-        const { name, mobile_number, medical_history } = req.body;
+        const { name, mobile_number, medical_history, hospitalId } = req.body;
+
+        console.log(hospitalId);
 
         // Create a new patient document. MongoDB will automatically assign a unique _id.
         const newPatient = new Patient({
             name,
             mobile_number,
-            medical_history
+            medical_history,
+            hospitalId
         });
 
         // Save the new patient to the database
