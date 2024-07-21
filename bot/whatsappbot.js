@@ -228,11 +228,6 @@ router.post('/webhook', async (req, res) => {
             return res.status(400).send({ error: 'No text or audio message found.' });
         }
 
-        console.log('Incoming message:', message);
-        console.log('From:', from);
-        console.log('Message ID:', messageId);
-
-
         if (sessionStates[from] === 'ended') {
             console.log('Ignoring message as session has already ended for:', from);
             return res.status(200).send({ success: true, message: 'Session has already ended. Ignoring message.' });
@@ -260,96 +255,52 @@ router.post('/webhook', async (req, res) => {
         let userMessage = text;
 
         if (audio) {
-            const mediaIdEndpoint = `https://crmapi.com.bot/api/meta/v19.0/${audio.id}?phone_number_id=300780979791573`;
+            // Fetch and save audio file
+            const mediaIdEndpoint = `https://crmapi.com.bot/api/meta/v19.0/${audio.id}`;
+            const mediaResponse = await axios({
+                method: 'get',
+                url: mediaIdEndpoint,
+                headers: { 'Authorization': `Bearer ${process.env.BEARER_TOKEN}` },
+                responseType: 'arraybuffer'
+            });
 
-            try {
-                const mediaIdResponse = await axios({
-                    method: 'get',
-                    url: mediaIdEndpoint,
-                    headers: { 'Authorization': `Bearer ${process.env.BEARER_TOKEN}` },
-                    responseType: 'arraybuffer'
-                });
-
-                const contentType = mediaIdResponse.headers['content-type'];
-                let audioFilePath;
-
-                if (contentType && contentType.includes('audio')) {
-                    const audioDir = path.join(__dirname, 'audio');
-                    if (!fs.existsSync(audioDir)) {
-                        fs.mkdirSync(audioDir);
-                    }
-                    audioFilePath = path.join(audioDir, `${audio.id}.ogg`);
-                    fs.writeFileSync(audioFilePath, mediaIdResponse.data);
-                    console.log('Audio file saved:', audioFilePath);
-                } else {
-                    const mediaUrl = mediaIdResponse.data.url || mediaIdResponse.data.download_url;
-                    if (!mediaUrl) {
-                        throw new Error('Media URL not found in the response');
-                    }
-
-                    const downloadMediaUrl = `${mediaUrl}?format=link`;
-
-                    const downloadResponse = await axios({
-                        method: 'get',
-                        url: downloadMediaUrl,
-                        headers: { 'Authorization': `Bearer ${process.env.BEARER_TOKEN}` },
-                        responseType: 'arraybuffer'
-                    });
-
-                    const audioDir = path.join(__dirname, 'audio');
-                    if (!fs.existsSync(audioDir)) {
-                        fs.mkdirSync(audioDir);
-                    }
-                    audioFilePath = path.join(audioDir, `${audio.id}.ogg`);
-                    fs.writeFileSync(audioFilePath, downloadResponse.data);
-                }
-
-                // Transcribe the audio file
-                const transcriptionResult = await transcribeAudio(audioFilePath);
-                if (transcriptionResult.success) {
-                    userMessage = transcriptionResult.content; // Use transcription as the user message
-                } else {
-                    console.error('Transcription failed:', transcriptionResult.error);
-                    res.status(500).send({ error: 'Failed to transcribe audio message.' });
-                    return;
-                }
-
-                // Cleanup: delete the audio file after processing
-                fs.unlink(audioFilePath, (err) => {
-                    if (err) {
-                        console.error('Error deleting audio file:', err);
-                    } else {
-                        console.log(`Audio file deleted successfully: ${audioFilePath}`);
-                    }
-                });
-
-            } catch (error) {
-                console.error('Error processing audio file:', error.message);
-                res.status(500).send({ error: 'Failed to process audio file.' });
-                return;
+            const audioDir = path.join(__dirname, 'audio');
+            if (!fs.existsSync(audioDir)) {
+                fs.mkdirSync(audioDir);
             }
+            const audioFilePath = path.join(audioDir, `${audio.id}.ogg`);
+            fs.writeFileSync(audioFilePath, mediaResponse.data);
+
+            // Transcribe the audio file
+            const transcriptionResult = await transcribeAudio(audioFilePath);
+            if (!transcriptionResult.success) {
+                console.error('Transcription failed:', transcriptionResult.error);
+                fs.unlinkSync(audioFilePath); // Cleanup audio file immediately
+                return res.status(500).send({ error: 'Failed to transcribe audio message.' });
+            }
+
+            userMessage = transcriptionResult.content; // Use transcription as the user message
+            fs.unlinkSync(audioFilePath); // Cleanup audio file immediately
         }
 
-        if (userMessage) {  // Ensure existing text processing logic is retained
+        if (userMessage) {
             const { success, content, error } = await handleGPTResponse(from, userMessage);
 
             if (success) {
-                const replyResponse = await sendReply(from, content, messageId);
+                await sendReply(from, content, messageId);
             } else {
                 console.error('Error in chatWithGPT:', error);
-                res.status(500).send({ error: 'Failed to process incoming message.' });
-                return;
+                return res.status(500).send({ error: 'Failed to process incoming message.' });
             }
         } else {
-            res.status(400).send({ error: 'No valid user message found after transcription.' });
-            return;
+            return res.status(400).send({ error: 'No valid user message found after transcription.' });
         }
     } catch (error) {
         console.error('Error processing incoming message:', error);
-        res.status(500).send({ error: 'Internal Server Error', details: error.message });
+        return res.status(500).send({ error: 'Internal Server Error', details: error.message });
     }
 
-    res.status(200).send({ success: true });
+    return res.status(200).send({ success: true });
 });
 
 
