@@ -16,6 +16,9 @@ const sessionStartTimes = {}; // Add this line
 const lastMessageIds = {};  // Add this line
 const baseUrl = process.env.NODE_ENV === 'production' ? process.env.BASE_URL : `http://localhost:${process.env.PORT || 3000}`;
 const sessionStates = {}; // Add this line to track session states
+const fs = require('fs');
+const path = require('path');
+const { transcribeAudio } = require('../bot/gptChat'); // Adjust the path as necessary
 
 const SESSION_DURATION = 5 * 60 * 1000; // 5 minutes in milliseconds
 
@@ -131,19 +134,23 @@ function parseWebhookRequest(req) {
     const messageId = message ? message.id : null;
     let text = null;
     let language = null;
+    let audio = null;  // Add this line
 
     if (message && message.type === 'button') {
         text = message.button.text;
-        language = text; // Assuming the button text represents the language
+        language = text;
     } else if (message && message.text) {
         text = message.text.body;
+    } else if (message && message.type === 'audio') {  // Add this block
+        audio = message.audio;
     }
     if (from && language) {
-        userLanguages[from] = language;  // Store the language choice
+        userLanguages[from] = language;
     }
 
-    return { from, text, language, messageId, message };
+    return { from, text, language, messageId, message, audio };  // Add audio here
 }
+
 
 
 function initializeHistory(from, language = null) {
@@ -206,21 +213,26 @@ async function sendReply(to, body, messageId) {
 }
 
 router.post('/webhook', async (req, res) => {
-    console.log('Received webhook:', req.body);
+    console.log('Received webhook:', JSON.stringify(req.body, null, 2));
 
     try {
-        const { from, text, language, messageId, message } = parseWebhookRequest(req);
+        const { from, text, language, messageId, message, audio } = parseWebhookRequest(req);
 
-        if (!from || !text) {
+        if (!from) {
             console.error('Invalid message structure:', message);
             return res.status(400).send({ error: 'Invalid message structure.' });
         }
 
-        console.log('Incoming message text:', text);
+        if (!text && !audio) {
+            console.error('No text or audio message found:', message);
+            return res.status(400).send({ error: 'No text or audio message found.' });
+        }
+
+        console.log('Incoming message:', message);
         console.log('From:', from);
         console.log('Message ID:', messageId);
 
-        // Check if the session has already ended
+
         if (sessionStates[from] === 'ended') {
             console.log('Ignoring message as session has already ended for:', from);
             return res.status(200).send({ success: true, message: 'Session has already ended. Ignoring message.' });
@@ -229,41 +241,112 @@ router.post('/webhook', async (req, res) => {
         initializeHistory(from, language);
 
         if (!sessionStartTimes[from]) {
-            // Check if the mobile number is in queue and handle accordingly
             const isInQueue = await isMobileNumberInQueue(from);
             if (!isInQueue) {
-                // If not in queue, just return success without doing anything
                 console.log(`Number ${from} is not in queue. Ignoring message.`);
                 return res.status(200).send({ success: true, message: 'Number not in queue. Ignoring message.' });
             }
 
-            // Initialize session start time
             sessionStartTimes[from] = new Date();
-            lastMessageIds[from] = messageId;  // Store the messageId
+            lastMessageIds[from] = messageId;
 
-            // Start session timeout
             setTimeout(() => {
-                endSessionActions(from, lastMessageIds[from]);  // Pass the messageId to the endSessionActions function
+                endSessionActions(from, lastMessageIds[from]);
             }, SESSION_DURATION);
         } else {
-            // Update the last message ID
             lastMessageIds[from] = messageId;
         }
 
-        const { success, content, error } = await handleGPTResponse(from, text);
+        let userMessage = text;
 
-        if (success) {
-            const replyResponse = await sendReply(from, content, messageId);
-            // console.log('Reply sent:', replyResponse);
+        if (audio) {
+            const mediaIdEndpoint = `https://crmapi.com.bot/api/meta/v19.0/${audio.id}?phone_number_id=300780979791573`;
+
+            try {
+                const mediaIdResponse = await axios({
+                    method: 'get',
+                    url: mediaIdEndpoint,
+                    headers: { 'Authorization': `Bearer ${process.env.BEARER_TOKEN}` },
+                    responseType: 'arraybuffer'
+                });
+
+                const contentType = mediaIdResponse.headers['content-type'];
+                let audioFilePath;
+
+                if (contentType && contentType.includes('audio')) {
+                    const audioDir = path.join(__dirname, 'audio');
+                    if (!fs.existsSync(audioDir)) {
+                        fs.mkdirSync(audioDir);
+                    }
+                    audioFilePath = path.join(audioDir, `${audio.id}.ogg`);
+                    fs.writeFileSync(audioFilePath, mediaIdResponse.data);
+                    console.log('Audio file saved:', audioFilePath);
+                } else {
+                    const mediaUrl = mediaIdResponse.data.url || mediaIdResponse.data.download_url;
+                    if (!mediaUrl) {
+                        throw new Error('Media URL not found in the response');
+                    }
+
+                    const downloadMediaUrl = `${mediaUrl}?format=link`;
+
+                    const downloadResponse = await axios({
+                        method: 'get',
+                        url: downloadMediaUrl,
+                        headers: { 'Authorization': `Bearer ${process.env.BEARER_TOKEN}` },
+                        responseType: 'arraybuffer'
+                    });
+
+                    const audioDir = path.join(__dirname, 'audio');
+                    if (!fs.existsSync(audioDir)) {
+                        fs.mkdirSync(audioDir);
+                    }
+                    audioFilePath = path.join(audioDir, `${audio.id}.ogg`);
+                    fs.writeFileSync(audioFilePath, downloadResponse.data);
+                }
+
+                // Transcribe the audio file
+                const transcriptionResult = await transcribeAudio(audioFilePath);
+                if (transcriptionResult.success) {
+                    userMessage = transcriptionResult.content; // Use transcription as the user message
+                } else {
+                    console.error('Transcription failed:', transcriptionResult.error);
+                    res.status(500).send({ error: 'Failed to transcribe audio message.' });
+                    return;
+                }
+
+                // Cleanup: delete the audio file after processing
+                fs.unlink(audioFilePath, (err) => {
+                    if (err) {
+                        console.error('Error deleting audio file:', err);
+                    } else {
+                        console.log(`Audio file deleted successfully: ${audioFilePath}`);
+                    }
+                });
+
+            } catch (error) {
+                console.error('Error processing audio file:', error.message);
+                res.status(500).send({ error: 'Failed to process audio file.' });
+                return;
+            }
+        }
+
+        if (userMessage) {  // Ensure existing text processing logic is retained
+            const { success, content, error } = await handleGPTResponse(from, userMessage);
+
+            if (success) {
+                const replyResponse = await sendReply(from, content, messageId);
+            } else {
+                console.error('Error in chatWithGPT:', error);
+                res.status(500).send({ error: 'Failed to process incoming message.' });
+                return;
+            }
         } else {
-            console.error('Error in chatWithGPT:', error);
-            res.status(500).send({ error: 'Failed to process incoming message.' });
+            res.status(400).send({ error: 'No valid user message found after transcription.' });
             return;
         }
     } catch (error) {
-        console.error('Error processing incoming message:', error.response ? error.response.data : error.message);
-        res.status(500).send({ error: 'Failed to process incoming message.' });
-        return;
+        console.error('Error processing incoming message:', error);
+        res.status(500).send({ error: 'Internal Server Error', details: error.message });
     }
 
     res.status(200).send({ success: true });
