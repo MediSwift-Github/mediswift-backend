@@ -44,7 +44,7 @@ async function chatWithGPT(prompt, conversationHistory, medicalHistory) {
 
     try {
         const response = await openai.chat.completions.create({
-            model: "gpt-3.5-turbo",
+            model: "gpt-4o-mini",
             messages: conversationHistory,
         });
 
@@ -72,7 +72,7 @@ async function summarizeConversation(conversationHistory) {
 
     try {
         const response = await openai.chat.completions.create({
-            model: "gpt-3.5-turbo",
+            model: "gpt-4o-mini",
             messages: filteredHistory, // Use the filtered and updated history here
         });
 
@@ -89,7 +89,7 @@ async function summarizeConversation(conversationHistory) {
 
 async function convertSummaryToJSON(summary) {
     const completion = await openai.chat.completions.create({
-        model: "gpt-3.5-turbo-0125",
+        model: "gpt-4o-mini",
         messages: [
             {
                 role: "system",
@@ -159,7 +159,7 @@ async function convertMedicalSummaryToNotes(summary, medicalHistory) {
     try {
         // Make a request to the API with handling for empty or nonexistent medical history
         const response = await openai.chat.completions.create({
-            model: "gpt-3.5-turbo-0125",
+            model: "gpt-4o-mini",
             messages: [
                 {
                     role: "system",

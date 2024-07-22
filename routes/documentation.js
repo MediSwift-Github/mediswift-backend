@@ -79,7 +79,7 @@ async function createOpenAIResponse(systemInstruction, summaryContent, transcrip
 
     try {
         const response = await openai.chat.completions.create({
-            model: "gpt-3.5-turbo-0125",
+            model: "gpt-4o-mini",
             messages: [systemPrompt, userPrompt],
             response_format: { "type": "json_object" }
         });
