@@ -21,6 +21,13 @@ const path = require('path');
 const { transcribeAudio } = require('../bot/gptChat'); // Adjust the path as necessary
 
 const SESSION_DURATION = 5 * 60 * 1000; // 5 minutes in milliseconds
+const SHORT_MESSAGE_THRESHOLD = 20; // Define what constitutes a short message (in characters)
+const INACTIVITY_TIMEOUT = 5000; // 3 seconds
+const MONITORING_PHASE_DURATION = 120000; // 2 minutes in milliseconds
+
+const messageBuffers = {}; // Temporary storage for messages
+const inactivityTimers = {}; // Timers for inactivity detection
+const userBehavior = {}; // To track user behavior
 
 
 const isMobileNumberInQueue = async (mobileNumber) => {
@@ -169,13 +176,11 @@ function initializeHistory(from, language = null) {
 
 
 async function handleGPTResponse(from, text) {
-    // Assuming 'from' can be used to fetch the corresponding queue record
     let queueRecord = await Queue.findOne({ patientMobileNumber: from }).populate('patientId').exec();
     if (!queueRecord) {
         return { success: false, error: 'No queue record found for this number.' };
     }
 
-    // Accessing the patient's medical history
     let patient = queueRecord.patientId;
     if (!patient) {
         return { success: false, error: 'Patient record not found.' };
@@ -183,7 +188,6 @@ async function handleGPTResponse(from, text) {
 
     const medicalHistory = patient.medical_history;
 
-    // Now you have access to medicalHistory, proceed with handling the GPT response
     const { success, content, conversationHistory: updatedHistory } = await chatWithGPT(text, conversationHistory[from], medicalHistory);
 
     if (success) {
@@ -193,6 +197,8 @@ async function handleGPTResponse(from, text) {
         return { success: false, error: content };
     }
 }
+
+
 
 async function sendReply(to, body, messageId) {
     const data = {
@@ -252,10 +258,36 @@ router.post('/webhook', async (req, res) => {
             lastMessageIds[from] = messageId;
         }
 
+        if (!userBehavior[from]) {
+            userBehavior[from] = {
+                shortMessageCount: 0,
+                longMessageCount: 0,
+                isMonitoring: true,
+                aggregationEnabled: true,
+                startTime: Date.now()
+            };
+        }
+
+        const user = userBehavior[from];
+
+        if (user.isMonitoring) {
+            if (text && text.length < SHORT_MESSAGE_THRESHOLD) {
+                user.shortMessageCount++;
+            } else {
+                user.longMessageCount++;
+            }
+
+            if (Date.now() - user.startTime > MONITORING_PHASE_DURATION) {
+                user.isMonitoring = false;
+                if (user.longMessageCount > user.shortMessageCount) {
+                    user.aggregationEnabled = false;
+                }
+            }
+        }
+
         let userMessage = text;
 
         if (audio) {
-            // Fetch and save audio file
             const mediaIdEndpoint = `https://crmapi.com.bot/api/meta/v19.0/${audio.id}`;
             const mediaResponse = await axios({
                 method: 'get',
@@ -271,7 +303,6 @@ router.post('/webhook', async (req, res) => {
             const audioFilePath = path.join(audioDir, `${audio.id}.ogg`);
             fs.writeFileSync(audioFilePath, mediaResponse.data);
 
-            // Transcribe the audio file
             const transcriptionResult = await transcribeAudio(audioFilePath);
             if (!transcriptionResult.success) {
                 console.error('Transcription failed:', transcriptionResult.error);
@@ -283,25 +314,41 @@ router.post('/webhook', async (req, res) => {
             fs.unlinkSync(audioFilePath); // Cleanup audio file immediately
         }
 
-        if (userMessage) {
-            const { success, content, error } = await handleGPTResponse(from, userMessage);
+        if (user.aggregationEnabled) {
+            if (!messageBuffers[from]) {
+                messageBuffers[from] = [];
+            }
 
-            if (success) {
-                await sendReply(from, content, messageId);
+            messageBuffers[from].push(userMessage);
+
+            if (userMessage.length < SHORT_MESSAGE_THRESHOLD) {
+                if (inactivityTimers[from]) {
+                    clearTimeout(inactivityTimers[from]);
+                }
+
+                inactivityTimers[from] = setTimeout(() => {
+                    processAggregatedMessages(from);
+                }, INACTIVITY_TIMEOUT);
             } else {
-                console.error('Error in chatWithGPT:', error);
-                return res.status(500).send({ error: 'Failed to process incoming message.' });
+                if (inactivityTimers[from]) {
+                    clearTimeout(inactivityTimers[from]);
+                }
+                processAggregatedMessages(from);
             }
         } else {
-            return res.status(400).send({ error: 'No valid user message found after transcription.' });
+            processAndRespond(from, userMessage);
         }
+
+        return res.status(200).send({ success: true });
+
     } catch (error) {
         console.error('Error processing incoming message:', error);
         return res.status(500).send({ error: 'Internal Server Error', details: error.message });
     }
-
-    return res.status(200).send({ success: true });
 });
+
+
+
 
 
 
@@ -390,6 +437,31 @@ async function endSessionActions(chatId, messageId) {
         console.log(`Session state for ${chatId} has been cleared after one hour.`);
     }, 60 * 60 * 1000);  // 1 hour in milliseconds
 }
+
+const processAggregatedMessages = async (from) => {
+    if (!messageBuffers[from] || messageBuffers[from].length === 0) {
+        return;
+    }
+
+    const aggregatedMessage = messageBuffers[from].join(' ');
+    messageBuffers[from] = []; // Clear buffer after processing
+    delete inactivityTimers[from];
+
+    await processAndRespond(from, aggregatedMessage);
+};
+
+const processAndRespond = async (from, message) => {
+    console.log(`Processing message for ${from}: ${message}`);
+
+    const { success, content, error } = await handleGPTResponse(from, message);
+
+    if (success) {
+        await sendReply(from, content, lastMessageIds[from]);
+    } else {
+        console.error('Error in chatWithGPT:', error);
+    }
+};
+
 
 
 module.exports = router;
