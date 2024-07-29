@@ -456,7 +456,12 @@ async function endSessionActions(chatId, messageId) {
     // Clean up session data
     delete sessionStartTimes[chatId];
     delete conversationHistory[chatId];
-    delete lastMessageIds[chatId];  // Clean up the last message ID
+    delete lastMessageIds[chatId];
+    delete messageBuffers[chatId];
+    clearTimeout(inactivityTimers[chatId]);
+    delete inactivityTimers[chatId];
+    delete userBehavior[chatId];
+    delete sessionStates[chatId];
 
     setTimeout(() => {
         delete sessionStates[chatId];
