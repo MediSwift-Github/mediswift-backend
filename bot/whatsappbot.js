@@ -171,8 +171,10 @@ function initializeHistory(from, language = null) {
 
     if (language) {
         conversationHistory[from].language = language;
+        console.log(`Initialized conversation history for ${from} with language: ${language}`);
     }
 }
+
 
 
 async function handleGPTResponse(from, text) {
@@ -239,7 +241,31 @@ router.post('/webhook', async (req, res) => {
             return res.status(200).send({ success: true, message: 'Session has already ended. Ignoring message.' });
         }
 
-        initializeHistory(from, language);
+        // Check if the user has an existing language preference
+        const existingLanguage = conversationHistory[from] ? conversationHistory[from].language : null;
+
+        if (language && existingLanguage && language !== existingLanguage) {
+            // New language selected, reset the conversation
+            console.log(`User ${from} switched to a new language: ${language}. Resetting the conversation.`);
+
+            // Clear session data
+            delete sessionStartTimes[from];
+            delete conversationHistory[from];
+            delete lastMessageIds[from];
+            delete messageBuffers[from];
+            clearTimeout(inactivityTimers[from]);
+            delete inactivityTimers[from];
+            delete userBehavior[from];
+            delete sessionStates[from];
+
+            // Initialize history with the new language
+            initializeHistory(from, language);
+        }
+
+        if (language) {
+            console.log(`User ${from} switched to language: ${language}`);
+            initializeHistory(from, language); // Ensure history is initialized with the new language
+        }
 
         if (!sessionStartTimes[from]) {
             const isInQueue = await isMobileNumberInQueue(from);
@@ -453,14 +479,17 @@ const processAggregatedMessages = async (from) => {
 const processAndRespond = async (from, message) => {
     console.log(`Processing message for ${from}: ${message}`);
 
-    const { success, content, error } = await handleGPTResponse(from, message);
+    const language = conversationHistory[from].language || 'English';
+    const { success, content, error } = await chatWithGPT(message, conversationHistory[from], medicalHistory[from], language);
 
     if (success) {
+        console.log(`Sending reply to ${from} in language: ${language}`);
         await sendReply(from, content, lastMessageIds[from]);
     } else {
         console.error('Error in chatWithGPT:', error);
     }
 };
+
 
 
 

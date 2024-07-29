@@ -30,9 +30,8 @@ function createSystemPrompt(medicalHistory, conversationLanguage) {
 }
 
 
-async function chatWithGPT(prompt, conversationHistory, medicalHistory) {
-
-    const conversationLanguage = conversationHistory.language || 'English'; // Default to English if no language is selected
+async function chatWithGPT(prompt, conversationHistory, medicalHistory, language) {
+    const conversationLanguage = language || conversationHistory.language || 'English'; // Default to English if no language is selected
     const systemLevelPrompt = createSystemPrompt(medicalHistory, conversationLanguage);
 
     // Ensure the system-level prompt is always at the beginning of the conversation history
