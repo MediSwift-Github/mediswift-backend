@@ -52,6 +52,8 @@ router.post('/send-template-message', async (req, res) => {
         return res.status(400).send({ error: 'Recipient number is required.' });
     }
 
+    const videoLink = 'https://drive.google.com/uc?export=download&id=13fvsClbScVkuFZWOOwWnsVKwoU0Un80t';
+
     try {
         const data = {
             to: to,
@@ -63,7 +65,19 @@ router.post('/send-template-message', async (req, res) => {
                     code: 'en'
                 },
                 name: 'language_selection',
-                components: []
+                components: [
+                    {
+                        type: 'header',
+                        parameters: [
+                            {
+                                type: 'video',
+                                video: {
+                                    link: videoLink
+                                }
+                            }
+                        ]
+                    }
+                ]
             }
         };
 
