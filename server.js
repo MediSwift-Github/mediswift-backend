@@ -13,7 +13,7 @@ const documentationRoute = require('./routes/documentation');
 const saveHealthRecordRouter = require('./routes/saveHealthRecord');
 const patientHandoutRoutes = require('./routes/savePatientHandout');
 const whatsappBot = require('./bot/whatsappbot');
-
+const missedCallRoute = require('./routes/missed-call');
 
 
 
@@ -56,7 +56,9 @@ app.use(documentationRoute);
 app.use(saveHealthRecordRouter);
 app.use(patientHandoutRoutes);
 app.use(whatsappBot);
-
+app.use(express.json()); // for parsing application/json
+app.use(express.urlencoded({ extended: true })); // for parsing application/x-www-form-urlencoded
+app.use(missedCallRoute);
 setupRealtimeUpdates(server);
 
 app.get('/', (req, res) => res.send('MediSwift API Running'));
