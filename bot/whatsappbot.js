@@ -509,6 +509,18 @@ const processAndRespond = async (from, message) => {
 };
 
 const sendTemplateMessage = async (to, templateName) => {
+    const languageCode = conversationHistory[to].language === 'English' ? 'en' : 'hi';
+    const templateMap = {
+        "name": {
+            "en": "name_english",
+            "hi": "name_request_hindi"
+        },
+        "hospitalId": {
+            "en": "hospitalid_request_english",
+            "hi": "hosptialid_hindi"
+        }
+    };
+
     const data = {
         to: to,
         recipient_type: 'individual',
@@ -516,9 +528,9 @@ const sendTemplateMessage = async (to, templateName) => {
         template: {
             language: {
                 policy: 'deterministic',
-                code: 'hi'
+                code: languageCode
             },
-            name: templateName,
+            name: templateMap[templateName][languageCode],
             components: []
         }
     };
@@ -530,10 +542,10 @@ const sendTemplateMessage = async (to, templateName) => {
                 'Content-Type': 'application/json'
             }
         });
-        console.log(`${templateName} template sent:`, response.data);
+        console.log(`${templateMap[templateName][languageCode]} template sent:`, response.data);
     } catch (error) {
-        console.error(`Error sending ${templateName} template:`, error.response ? error.response.data : error.message);
-        throw new Error(`Failed to send ${templateName} template.`);
+        console.error(`Error sending ${templateMap[templateName][languageCode]} template:`, error.response ? error.response.data : error.message);
+        throw new Error(`Failed to send ${templateMap[templateName][languageCode]} template.`);
     }
 };
 
