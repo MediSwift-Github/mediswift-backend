@@ -591,4 +591,7 @@ const isLanguageSelection = (text) => {
 };
 
 
-module.exports = router;
+module.exports = {
+    conversationHistory,
+    router
+};
