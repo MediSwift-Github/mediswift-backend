@@ -1,5 +1,56 @@
 const express = require('express');
 const router = express.Router();
+const Queue = require('../database/queue-schema');  // Adjust the path as necessary
+
+// Function to send a template message
+const sendTemplateMessage = async (to, templateName) => {
+    if (!to) {
+        throw new Error('Recipient number is required.');
+    }
+
+    const videoLink = 'https://drive.google.com/uc?export=download&id=13fvsClbScVkuFZWOOwWnsVKwoU0Un80t';  // Define video link
+
+    const data = {
+        to: to,
+        recipient_type: 'individual',
+        type: 'template',
+        template: {
+            language: {
+                policy: 'deterministic',
+                code: 'en'
+            },
+            name: templateName,
+            components: [
+                {
+                    type: 'header',
+                    parameters: [
+                        {
+                            type: 'video',
+                            video: {
+                                link: videoLink
+                            }
+                        }
+                    ]
+                }
+            ]
+        }
+    };
+
+    try {
+        const response = await axios.post(process.env.API_URL, data, {
+            headers: {
+                'Authorization': `Bearer ${process.env.BEARER_TOKEN}`,
+                'Content-Type': 'application/json'
+            }
+        });
+
+        console.log('Template message sent:', response.data);
+        return response.data;
+    } catch (error) {
+        console.error('Error sending template message:', error.response ? error.response.data : error.message);
+        throw new Error('Failed to send template message.');
+    }
+};
 
 // Define the API endpoint that Sarv will call
 router.get('/api/missed-call', async (req, res) => {
@@ -43,5 +94,4 @@ const isMobileNumberInQueue = async (mobileNumber) => {
         return false;
     }
 };
-
 module.exports = router;
