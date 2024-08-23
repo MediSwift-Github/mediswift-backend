@@ -56,7 +56,8 @@ app.use(audioTranscription);
 app.use(documentationRoute);
 app.use(saveHealthRecordRouter);
 app.use(patientHandoutRoutes);
-app.use('/api', whatsappRouter);app.use(express.json()); // for parsing application/json
+app.use(whatsappRouter);  // Directly use the WhatsApp router without /api prefix
+app.use(express.json()); // for parsing application/json
 app.use(express.urlencoded({ extended: true })); // for parsing application/x-www-form-urlencoded
 app.use(missedCallRoute);
 setupRealtimeUpdates(server);

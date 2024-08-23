@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const axios = require('axios');  // Make sure axios is imported
 const Queue = require('../database/queue-schema');  // Adjust the path as necessary
-const { conversationHistory } = require('../bot/whatsappbot');  // Adjust the path as necessary
+const { setConversationFlag } = require('../bot/whatsappbot');  // Import the function
 
 // Function to send a template message
 const sendTemplateMessage = async (to, templateName) => {
@@ -72,13 +72,9 @@ router.get('/api/missed-call', async (req, res) => {
         // Step 2: Send the language selection template
         await sendTemplateMessage(callerNumber, 'language_selection');
 
-        // Step 3: Set the fromMissedCall flag in conversationHistory
-        if (!conversationHistory[callerNumber]) {
-            conversationHistory[callerNumber] = {};
-        }
-        conversationHistory[callerNumber].fromMissedCall = true;
+        // Step 3: Set the fromMissedCall flag using the utility function
+        setConversationFlag(callerNumber, 'fromMissedCall', true);
 
-        // Respond to Sarv with a success message
         res.status(200).send('Language selection template sent.');
     } catch (error) {
         console.error('Error handling missed call:', error);

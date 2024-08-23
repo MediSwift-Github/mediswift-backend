@@ -590,8 +590,19 @@ const isLanguageSelection = (text) => {
     return languages.includes(text);
 };
 
+const getConversationHistory = (callerNumber) => {
+    return conversationHistory[callerNumber] || {};
+};
 
+// Function to set a flag in the conversation history
+const setConversationFlag = (callerNumber, flagName, flagValue) => {
+    if (!conversationHistory[callerNumber]) {
+        conversationHistory[callerNumber] = {};
+    }
+    conversationHistory[callerNumber][flagName] = flagValue;
+};
 module.exports = {
-    conversationHistory,
+    getConversationHistory,
+    setConversationFlag,
     router
 };

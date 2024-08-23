@@ -23,6 +23,11 @@ const userSchema = new mongoose.Schema({
     hospital_id: {
         type: mongoose.Schema.Types.ObjectId,
         required: true
+    },
+    hospital_code: {
+        type: Number,
+        required: true,
+        unique: true
     }
 });
 
