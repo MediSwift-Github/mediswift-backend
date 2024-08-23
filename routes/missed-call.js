@@ -2,15 +2,46 @@ const express = require('express');
 const router = express.Router();
 
 // Define the API endpoint that Sarv will call
-router.get('/api/missed-call', (req, res) => {
-    // Assuming Sarv sends data as query parameters
+router.get('/api/missed-call', async (req, res) => {
     const customerData = req.query;
+    const callerNumber = customerData.Caller;
 
-    // Log the received data
-    console.log('Received missed call data:', customerData);
+    console.log('Received missed call from number:', callerNumber);
 
-    // Respond to Sarv with a success message
-    res.send('Data received successfully');
+    try {
+        // Step 1: Check if the number is already in the queue
+        const isInQueue = await isMobileNumberInQueue(callerNumber);
+        if (isInQueue) {
+            console.log(`Number ${callerNumber} is already in the queue. Ignoring missed call.`);
+            return res.status(200).send('Number is already in the queue.');
+        }
+
+        // Step 2: Send the language selection template
+        await sendTemplateMessage(callerNumber, 'language_selection');
+
+        // Step 3: Set the fromMissedCall flag in conversationHistory
+        if (!conversationHistory[callerNumber]) {
+            conversationHistory[callerNumber] = {};
+        }
+        conversationHistory[callerNumber].fromMissedCall = true;
+
+        // Respond to Sarv with a success message
+        res.status(200).send('Language selection template sent.');
+    } catch (error) {
+        console.error('Error handling missed call:', error);
+        res.status(500).send('Failed to handle missed call.');
+    }
 });
+
+const isMobileNumberInQueue = async (mobileNumber) => {
+    try {
+        console.log("Checking if mobile number is in queue:", mobileNumber);
+        const queueEntry = await Queue.findOne({ patientMobileNumber: mobileNumber }).exec();
+        return !!queueEntry; // Returns true if an entry is found, otherwise false
+    } catch (error) {
+        console.error("Error checking mobile number in queue:", error);
+        return false;
+    }
+};
 
 module.exports = router;

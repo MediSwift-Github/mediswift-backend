@@ -233,7 +233,8 @@ async function sendReply(to, body, messageId) {
 
     return response.data;
 }
-
+// Webhook endpoint to process incoming messages from WhatsApp
+// Webhook endpoint to process incoming messages from WhatsApp
 router.post('/webhook', async (req, res) => {
     console.log('Received webhook:', JSON.stringify(req.body, null, 2));
 
@@ -354,28 +355,31 @@ router.post('/webhook', async (req, res) => {
             fs.unlinkSync(audioFilePath); // Cleanup audio file immediately
         }
 
-        if (user.aggregationEnabled) {
-            if (!messageBuffers[from]) {
-                messageBuffers[from] = [];
+        // Check if the patient was added via missed call and proceed accordingly
+        if (conversationHistory[from]?.fromMissedCall) {
+            if (isLanguageSelection(text)) {
+                initializeHistory(from, language);
+                await sendTemplateMessage(from, 'name_request_hindi');
+                return res.status(200).send({ success: true, message: 'Name request template sent.' });
             }
 
-            messageBuffers[from].push(userMessage);
+            if (conversationHistory[from] && !conversationHistory[from].name) {
+                conversationHistory[from].name = text;
+                await sendTemplateMessage(from, 'hosptialid_hindi');
+                return res.status(200).send({ success: true, message: 'Hospital ID request template sent.' });
+            }
 
-            if (userMessage.length < SHORT_MESSAGE_THRESHOLD) {
-                if (inactivityTimers[from]) {
-                    clearTimeout(inactivityTimers[from]);
-                }
+            if (conversationHistory[from] && conversationHistory[from].name && !conversationHistory[from].hospitalId) {
+                conversationHistory[from].hospitalId = text;
 
-                inactivityTimers[from] = setTimeout(() => {
-                    processAggregatedMessages(from);
-                }, INACTIVITY_TIMEOUT);
-            } else {
-                if (inactivityTimers[from]) {
-                    clearTimeout(inactivityTimers[from]);
-                }
-                processAggregatedMessages(from);
+                const patientId = await addPatientToDatabase(from);
+                await addPatientToQueue(patientId, conversationHistory[from].hospitalId, true); // Skip the template
+                await processAndRespond(from, ''); // Start with an initial empty message
+
+                return res.status(200).send({ success: true, message: 'Patient added and GPT conversation started.' });
             }
         } else {
+            // If not from missed call, handle the conversation as usual
             processAndRespond(from, userMessage);
         }
 
@@ -386,11 +390,6 @@ router.post('/webhook', async (req, res) => {
         return res.status(500).send({ error: 'Internal Server Error', details: error.message });
     }
 });
-
-
-
-
-
 
 
 // Endpoint to reply to a message
@@ -509,7 +508,87 @@ const processAndRespond = async (from, message) => {
     }
 };
 
+const sendTemplateMessage = async (to, templateName) => {
+    const data = {
+        to: to,
+        recipient_type: 'individual',
+        type: 'template',
+        template: {
+            language: {
+                policy: 'deterministic',
+                code: 'hi'
+            },
+            name: templateName,
+            components: []
+        }
+    };
 
+    try {
+        const response = await axios.post(`${process.env.API_URL}`, data, {
+            headers: {
+                'Authorization': `Bearer ${process.env.BEARER_TOKEN}`,
+                'Content-Type': 'application/json'
+            }
+        });
+        console.log(`${templateName} template sent:`, response.data);
+    } catch (error) {
+        console.error(`Error sending ${templateName} template:`, error.response ? error.response.data : error.message);
+        throw new Error(`Failed to send ${templateName} template.`);
+    }
+};
+
+const addPatientToDatabase = async (from) => {
+    const { name, hospitalId } = conversationHistory[from];
+
+    const patientData = {
+        name,
+        mobile_number: from,
+        medical_history: [], // Empty array as a placeholder
+        hospitalId
+    };
+
+    try {
+        const response = await axios.post(`${process.env.BASE_URL}/api/newpatient`, patientData, {
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+
+        const newPatient = response.data;
+        console.log('Patient added successfully:', newPatient);
+        return newPatient._id;
+    } catch (error) {
+        console.error('Error adding patient to the database:', error.response ? error.response.data : error.message);
+        throw new Error('Failed to add patient to the database.');
+    }
+};
+
+const addPatientToQueue = async (patientId, hospitalId) => {
+    try {
+        const queueData = {
+            patientId,
+            hospitalId,
+            skipTemplate: true // Skip sending the template again
+        };
+
+        const response = await axios.post(`${process.env.BASE_URL}/api/queue/add`, queueData, {
+            headers: {
+                'Content-Type': 'application/json'
+            }
+        });
+
+        console.log('Patient added to the queue successfully:', response.data);
+    } catch (error) {
+        console.error('Error adding patient to the queue:', error.response ? error.response.data : error.message);
+        throw new Error('Failed to add patient to the queue.');
+    }
+};
+// Function to check if the incoming message is a language selection
+const isLanguageSelection = (text) => {
+    // Define your logic here. For example, if the text is "English" or "Hindi":
+    const languages = ['English', 'हिन्दी'];
+    return languages.includes(text);
+};
 
 
 module.exports = router;

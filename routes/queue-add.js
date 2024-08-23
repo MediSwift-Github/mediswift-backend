@@ -10,9 +10,10 @@ const baseUrl = process.env.NODE_ENV === 'production' ? process.env.BASE_URL : `
 
 
 // Endpoint to add a patient to the queue
+// Endpoint to add a patient to the queue
 router.post('/api/queue/add', async (req, res) => {
     try {
-        const { patientId, hospitalId } = req.body; // Destructure hospitalId from the request body
+        const { patientId, hospitalId, skipTemplate = false } = req.body; // Default skipTemplate to false
 
         // First, check if the patient already exists in the queue
         const existingEntry = await Queue.findOne({ patientId });
@@ -37,16 +38,17 @@ router.post('/api/queue/add', async (req, res) => {
         // Save the queue entry
         await queueEntry.save();
 
-        const localBaseUrl = `http://localhost:${process.env.PORT || 3000}`;
-
-        await axios.post(`${baseUrl}/send-template-message`, {
-            to: patient.mobile_number // Use the patient's mobile number
-        }, {
-            headers: {
-                'Authorization': `Bearer ${process.env.BEARER_TOKEN}`,
-                'Content-Type': 'application/json'
-            }
-        });
+        // Only send the language selection template if skipTemplate is false
+        if (!skipTemplate) {
+            await axios.post(`${baseUrl}/send-template-message`, {
+                to: patient.mobile_number // Use the patient's mobile number
+            }, {
+                headers: {
+                    'Authorization': `Bearer ${process.env.BEARER_TOKEN}`,
+                    'Content-Type': 'application/json'
+                }
+            });
+        }
 
         res.status(201).send(queueEntry);
     } catch (error) {
