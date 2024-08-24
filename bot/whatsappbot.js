@@ -148,28 +148,62 @@ router.get('/webhook', (req, res) => {
 });
 
 function parseWebhookRequest(req) {
+    console.log('Parsing webhook request...');
+
     const entry = req.body.entry ? req.body.entry[0] : null;
-    const changes = entry ? entry.changes[0] : null;
-    const message = changes ? changes.value.messages[0] : null;
-    const from = message ? message.from : null;
-    const messageId = message ? message.id : null;
+    console.log('Entry:', JSON.stringify(entry, null, 2));
+
+    if (!entry) {
+        console.log('No entry found in the webhook payload.');
+        return {};
+    }
+
+    const changes = entry.changes ? entry.changes[0] : null;
+    console.log('Changes:', JSON.stringify(changes, null, 2));
+
+    if (!changes) {
+        console.log('No changes found in the webhook entry.');
+        return {};
+    }
+
+    const value = changes.value || {};
+    console.log('Value:', JSON.stringify(value, null, 2));
+
+    const message = value.messages ? value.messages[0] : null;
+    console.log('Message:', JSON.stringify(message, null, 2));
+
+    if (!message) {
+        // Log and handle status update (e.g., message delivered, read, etc.)
+        const status = value.statuses ? value.statuses[0] : null;
+        if (status) {
+            console.log('Received a status update:', JSON.stringify(status, null, 2));
+            return { from: status.recipient_id };
+        }
+
+        console.log('No message or status found in the webhook changes.');
+        return {};
+    }
+
+    const from = message.from || null;
+    const messageId = message.id || null;
     let text = null;
     let language = null;
-    let audio = null;  // Add this line
+    let audio = null;
 
-    if (message && message.type === 'button') {
+    if (message.type === 'button') {
         text = message.button.text;
         language = text;
-    } else if (message && message.text) {
+    } else if (message.type === 'text') {
         text = message.text.body;
-    } else if (message && message.type === 'audio') {  // Add this block
+    } else if (message.type === 'audio') {
         audio = message.audio;
     }
     if (from && language) {
         userLanguages[from] = language;
     }
 
-    return { from, text, language, messageId, message, audio };  // Add audio here
+    console.log(`Parsed message details - From: ${from}, Text: ${text}, Language: ${language}, MessageId: ${messageId}, Audio: ${!!audio}`);
+    return { from, text, language, messageId, message, audio };
 }
 
 
@@ -236,7 +270,7 @@ async function sendReply(to, body, messageId) {
 // Webhook endpoint to process incoming messages from WhatsApp
 // Webhook endpoint to process incoming messages from WhatsApp
 router.post('/webhook', async (req, res) => {
-    console.log('Received webhook:', JSON.stringify(req.body, null, 2));
+    console.log('Received webhook:', JSON.stringify(req.body, null, 2));  // Log the entire request body
 
     try {
         const { from, text, language, messageId, message, audio } = parseWebhookRequest(req);
