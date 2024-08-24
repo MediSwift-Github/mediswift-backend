@@ -283,10 +283,15 @@ router.post('/webhook', async (req, res) => {
         }
 
         if (!sessionStartTimes[from]) {
-            const isInQueue = await isMobileNumberInQueue(from);
-            if (!isInQueue) {
-                console.log(`Number ${from} is not in queue. Ignoring message.`);
-                return res.status(200).send({ success: true, message: 'Number not in queue. Ignoring message.' });
+            if (conversationHistory[from]?.fromMissedCall) {
+                // Bypass the queue check for missed call patients
+                console.log(`Number ${from} was added via missed call. Bypassing queue check.`);
+            } else {
+                const isInQueue = await isMobileNumberInQueue(from);
+                if (!isInQueue) {
+                    console.log(`Number ${from} is not in queue. Ignoring message.`);
+                    return res.status(200).send({ success: true, message: 'Number not in queue. Ignoring message.' });
+                }
             }
 
             sessionStartTimes[from] = new Date();
