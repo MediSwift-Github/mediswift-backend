@@ -255,6 +255,8 @@ router.post('/webhook', async (req, res) => {
             console.log('Ignoring message as session has already ended for:', from);
             return res.status(200).send({ success: true, message: 'Session has already ended. Ignoring message.' });
         }
+        // Check if the conversation was started via a missed call
+        const isFromMissedCall = conversationHistory[from]?.fromMissedCall;
 
         // Check if the user has an existing language preference
         const existingLanguage = conversationHistory[from] ? conversationHistory[from].language : null;
@@ -283,10 +285,7 @@ router.post('/webhook', async (req, res) => {
         }
 
         if (!sessionStartTimes[from]) {
-            if (conversationHistory[from]?.fromMissedCall) {
-                // Bypass the queue check for missed call patients
-                console.log(`Number ${from} was added via missed call. Bypassing queue check.`);
-            } else {
+            if (!isFromMissedCall) {
                 const isInQueue = await isMobileNumberInQueue(from);
                 if (!isInQueue) {
                     console.log(`Number ${from} is not in queue. Ignoring message.`);
