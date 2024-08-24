@@ -85,12 +85,13 @@ const isMobileNumberInQueue = async (mobileNumber) => {
     try {
         console.log("Checking if mobile number is in queue:", mobileNumber);
         const queueEntry = await Queue.findOne({ patientMobileNumber: mobileNumber }).exec();
-        console.log("Queue entry found:", queueEntry);
+        console.log("Queue entry found:", JSON.stringify(queueEntry, null, 2));  // Log the queue entry result
         return !!queueEntry; // Returns true if an entry is found, otherwise false
     } catch (error) {
         console.error("Error checking mobile number in queue:", error);
         return false;
     }
 };
+
 
 module.exports = router;
