@@ -148,62 +148,28 @@ router.get('/webhook', (req, res) => {
 });
 
 function parseWebhookRequest(req) {
-    console.log('Parsing webhook request...');
-
     const entry = req.body.entry ? req.body.entry[0] : null;
-    console.log('Entry:', JSON.stringify(entry, null, 2));
-
-    if (!entry) {
-        console.log('No entry found in the webhook payload.');
-        return {};
-    }
-
-    const changes = entry.changes ? entry.changes[0] : null;
-    console.log('Changes:', JSON.stringify(changes, null, 2));
-
-    if (!changes) {
-        console.log('No changes found in the webhook entry.');
-        return {};
-    }
-
-    const value = changes.value || {};
-    console.log('Value:', JSON.stringify(value, null, 2));
-
-    const message = value.messages ? value.messages[0] : null;
-    console.log('Message:', JSON.stringify(message, null, 2));
-
-    if (!message) {
-        // Log and handle status update (e.g., message delivered, read, etc.)
-        const status = value.statuses ? value.statuses[0] : null;
-        if (status) {
-            console.log('Received a status update:', JSON.stringify(status, null, 2));
-            return { from: status.recipient_id };
-        }
-
-        console.log('No message or status found in the webhook changes.');
-        return {};
-    }
-
-    const from = message.from || null;
-    const messageId = message.id || null;
+    const changes = entry ? entry.changes[0] : null;
+    const message = changes ? changes.value.messages[0] : null;
+    const from = message ? message.from : null;
+    const messageId = message ? message.id : null;
     let text = null;
     let language = null;
-    let audio = null;
+    let audio = null;  // Add this line
 
-    if (message.type === 'button') {
+    if (message && message.type === 'button') {
         text = message.button.text;
         language = text;
-    } else if (message.type === 'text') {
+    } else if (message && message.text) {
         text = message.text.body;
-    } else if (message.type === 'audio') {
+    } else if (message && message.type === 'audio') {  // Add this block
         audio = message.audio;
     }
     if (from && language) {
         userLanguages[from] = language;
     }
 
-    console.log(`Parsed message details - From: ${from}, Text: ${text}, Language: ${language}, MessageId: ${messageId}, Audio: ${!!audio}`);
-    return { from, text, language, messageId, message, audio };
+    return { from, text, language, messageId, message, audio };  // Add audio here
 }
 
 
@@ -270,12 +236,10 @@ async function sendReply(to, body, messageId) {
 // Webhook endpoint to process incoming messages from WhatsApp
 // Webhook endpoint to process incoming messages from WhatsApp
 router.post('/webhook', async (req, res) => {
-    console.log('Received webhook:', JSON.stringify(req.body, null, 2));  // Log the entire request body
+    console.log('Received webhook:', JSON.stringify(req.body, null, 2));
 
     try {
         const { from, text, language, messageId, message, audio } = parseWebhookRequest(req);
-
-        console.log(`Parsed request - From: ${from}, Text: ${text}, Language: ${language}, MessageId: ${messageId}, Audio: ${!!audio}`);
 
         if (!from) {
             console.error('Invalid message structure:', message);
@@ -287,22 +251,45 @@ router.post('/webhook', async (req, res) => {
             return res.status(400).send({ error: 'No text or audio message found.' });
         }
 
-        // Check the session state
-        console.log(`Session state for ${from}: ${sessionStates[from]}`);
         if (sessionStates[from] === 'ended') {
             console.log('Ignoring message as session has already ended for:', from);
             return res.status(200).send({ success: true, message: 'Session has already ended. Ignoring message.' });
         }
-
+        // Check if the conversation was started via a missed call
         const isFromMissedCall = conversationHistory[from]?.fromMissedCall;
-        console.log(`isFromMissedCall for ${from}:`, isFromMissedCall);  // Log this to verify
+
+        // Check if the user has an existing language preference
+        const existingLanguage = conversationHistory[from] ? conversationHistory[from].language : null;
+
+        if (language && existingLanguage && language !== existingLanguage) {
+            // New language selected, reset the conversation
+            console.log(`User ${from} switched to a new language: ${language}. Resetting the conversation.`);
+
+            // Clear session data
+            delete sessionStartTimes[from];
+            delete conversationHistory[from];
+            delete lastMessageIds[from];
+            delete messageBuffers[from];
+            clearTimeout(inactivityTimers[from]);
+            delete inactivityTimers[from];
+            delete userBehavior[from];
+            delete sessionStates[from];
+
+            // Initialize history with the new language
+            initializeHistory(from, language);
+        }
+
+        if (language) {
+            console.log(`User ${from} switched to language: ${language}`);
+            initializeHistory(from, language); // Ensure history is initialized with the new language
+        }
 
         if (!sessionStartTimes[from]) {
-            if (!isFromMissedCall) {
-                console.log(`Checking if ${from} is in the queue...`);
-                const isInQueue = await isMobileNumberInQueue(from);
-                console.log(`Queue check result for ${from}:`, isInQueue);
+            const isFromMissedCall = conversationHistory[from]?.fromMissedCall;
 
+            // Skip the queue check if the conversation was initiated by a missed call
+            if (!isFromMissedCall) {
+                const isInQueue = await isMobileNumberInQueue(from);
                 if (!isInQueue) {
                     console.log(`Number ${from} is not in queue. Ignoring message.`);
                     return res.status(200).send({ success: true, message: 'Number not in queue. Ignoring message.' });
@@ -319,7 +306,6 @@ router.post('/webhook', async (req, res) => {
             lastMessageIds[from] = messageId;
         }
 
-        // Additional behavior checks and logging
         if (!userBehavior[from]) {
             userBehavior[from] = {
                 shortMessageCount: 0,
@@ -328,25 +314,22 @@ router.post('/webhook', async (req, res) => {
                 aggregationEnabled: true,
                 startTime: Date.now()
             };
-            console.log(`Initialized user behavior for ${from}`);
         }
 
         const user = userBehavior[from];
-        console.log(`User behavior for ${from}:`, user);
 
         if (user.isMonitoring) {
             if (text && text.length < SHORT_MESSAGE_THRESHOLD) {
                 user.shortMessageCount++;
-                console.log(`Incremented shortMessageCount for ${from}:`, user.shortMessageCount);
             } else {
                 user.longMessageCount++;
-                console.log(`Incremented longMessageCount for ${from}:`, user.longMessageCount);
             }
 
             if (Date.now() - user.startTime > MONITORING_PHASE_DURATION) {
                 user.isMonitoring = false;
-                user.aggregationEnabled = user.longMessageCount <= user.shortMessageCount;
-                console.log(`Monitoring phase ended for ${from}. Aggregation enabled: ${user.aggregationEnabled}`);
+                if (user.longMessageCount > user.shortMessageCount) {
+                    user.aggregationEnabled = false;
+                }
             }
         }
 
@@ -354,8 +337,6 @@ router.post('/webhook', async (req, res) => {
 
         if (audio) {
             const mediaIdEndpoint = `https://crmapi.com.bot/api/meta/v19.0/${audio.id}`;
-            console.log(`Fetching audio from: ${mediaIdEndpoint}`);
-
             const mediaResponse = await axios({
                 method: 'get',
                 url: mediaIdEndpoint,
@@ -370,8 +351,6 @@ router.post('/webhook', async (req, res) => {
             const audioFilePath = path.join(audioDir, `${audio.id}.ogg`);
             fs.writeFileSync(audioFilePath, mediaResponse.data);
 
-            console.log(`Audio saved to: ${audioFilePath}`);
-
             const transcriptionResult = await transcribeAudio(audioFilePath);
             if (!transcriptionResult.success) {
                 console.error('Transcription failed:', transcriptionResult.error);
@@ -380,12 +359,36 @@ router.post('/webhook', async (req, res) => {
             }
 
             userMessage = transcriptionResult.content; // Use transcription as the user message
-            console.log(`Transcribed audio message: ${userMessage}`);
             fs.unlinkSync(audioFilePath); // Cleanup audio file immediately
         }
 
-        console.log(`Processing message for ${from}: ${userMessage}`);
-        processAndRespond(from, userMessage);
+        // Check if the patient was added via missed call and proceed accordingly
+        if (conversationHistory[from]?.fromMissedCall) {
+            if (isLanguageSelection(text)) {
+                initializeHistory(from, language);
+                await sendTemplateMessage(from, 'name_request_hindi');
+                return res.status(200).send({ success: true, message: 'Name request template sent.' });
+            }
+
+            if (conversationHistory[from] && !conversationHistory[from].name) {
+                conversationHistory[from].name = text;
+                await sendTemplateMessage(from, 'hosptialid_hindi');
+                return res.status(200).send({ success: true, message: 'Hospital ID request template sent.' });
+            }
+
+            if (conversationHistory[from] && conversationHistory[from].name && !conversationHistory[from].hospitalId) {
+                conversationHistory[from].hospitalId = text;
+
+                const patientId = await addPatientToDatabase(from);
+                await addPatientToQueue(patientId, conversationHistory[from].hospitalId, true); // Skip the template
+                await processAndRespond(from, ''); // Start with an initial empty message
+
+                return res.status(200).send({ success: true, message: 'Patient added and GPT conversation started.' });
+            }
+        } else {
+            // If not from missed call, handle the conversation as usual
+            await processAndRespond(from, userMessage);
+        }
 
         return res.status(200).send({ success: true });
 
@@ -616,7 +619,6 @@ const setConversationFlag = (callerNumber, flagName, flagValue) => {
         conversationHistory[callerNumber] = {};
     }
     conversationHistory[callerNumber][flagName] = flagValue;
-    console.log(`Set ${flagName} for ${callerNumber} to ${flagValue}`);  // Log this
 };
 module.exports = {
     getConversationHistory,
