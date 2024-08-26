@@ -2,7 +2,7 @@ const express = require('express');
 const router = express.Router();
 const axios = require('axios');  // Make sure axios is imported
 const Queue = require('../database/queue-schema');  // Adjust the path as necessary
-const { setConversationFlag } = require('../bot/whatsappbot');  // Import the function
+const TempQueue = require('../database/temp-queue');  // Import the TempQueue schema
 
 // Function to send a template message
 const sendTemplateMessage = async (to, templateName) => {
@@ -62,18 +62,19 @@ router.get('/api/missed-call', async (req, res) => {
     console.log('Received missed call from number:', callerNumber);
 
     try {
-        // Step 1: Check if the number is already in the queue
-        const isInQueue = await isMobileNumberInQueue(callerNumber);
-        if (isInQueue) {
-            console.log(`Number ${callerNumber} is already in the queue. Ignoring missed call.`);
-            return res.status(200).send('Number is already in the queue.');
+        // Step 1: Check if the number is already in the temp queue
+        const isInTempQueue = await isNumberInTempQueue(callerNumber);
+        if (isInTempQueue) {
+            console.log(`Number ${callerNumber} is already in the temporary queue. Ignoring missed call.`);
+            return res.status(200).send('Number is already in the temporary queue.');
         }
 
         // Step 2: Send the language selection template
         await sendTemplateMessage(callerNumber, 'language_selection');
 
-        // Step 3: Set the fromMissedCall flag using the utility function
-        setConversationFlag(callerNumber, 'fromMissedCall', true);
+        // Step 3: Set the fromMissedCall flag in the temporary queue
+        await setMissedCallFlagInTempQueue(callerNumber);
+        console.log(`Missed call flag set for ${callerNumber} in temporary queue.`);
 
         res.status(200).send('Language selection template sent.');
     } catch (error) {
@@ -81,17 +82,30 @@ router.get('/api/missed-call', async (req, res) => {
         res.status(500).send('Failed to handle missed call.');
     }
 });
-const isMobileNumberInQueue = async (mobileNumber) => {
+
+const isNumberInTempQueue = async (mobileNumber) => {
     try {
-        console.log("Checking if mobile number is in queue:", mobileNumber);
-        const queueEntry = await Queue.findOne({ patientMobileNumber: mobileNumber }).exec();
-        console.log("Queue entry found:", JSON.stringify(queueEntry, null, 2));  // Log the queue entry result
-        return !!queueEntry; // Returns true if an entry is found, otherwise false
+        console.log("Checking if mobile number is in temporary queue:", mobileNumber);
+        const tempQueueEntry = await TempQueue.findOne({ patientMobileNumber: mobileNumber }).exec();
+        console.log("Temp queue entry found:", JSON.stringify(tempQueueEntry, null, 2));  // Log the temp queue entry result
+        return !!tempQueueEntry; // Returns true if an entry is found, otherwise false
     } catch (error) {
-        console.error("Error checking mobile number in queue:", error);
+        console.error("Error checking mobile number in temporary queue:", error);
         return false;
     }
 };
 
+const setMissedCallFlagInTempQueue = async (callerNumber) => {
+    try {
+        await TempQueue.updateOne(
+            { patientMobileNumber: callerNumber },
+            { $set: { fromMissedCall: true } },
+            { upsert: true }  // Create a new record if one doesn't exist
+        );
+        console.log(`fromMissedCall flag set for ${callerNumber} in temporary queue.`);
+    } catch (error) {
+        console.error(`Failed to set fromMissedCall flag for ${callerNumber} in temporary queue:`, error);
+    }
+};
 
 module.exports = router;

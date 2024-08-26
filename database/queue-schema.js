@@ -28,6 +28,10 @@ const queueSchema = new mongoose.Schema({
         type: mongoose.Schema.Types.ObjectId,
         required: true
     },
+    fromMissedCall: {
+        type: Boolean,
+        default: false
+    }
 });
 
 const Queue = mongoose.model('Queue', queueSchema);

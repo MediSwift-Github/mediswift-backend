@@ -4,16 +4,18 @@ const mongoose = require('mongoose');
 const Queue = require('../database/queue-schema');
 const Patient =require('../database/patient-schema');
 const axios = require('axios');
-
+const TempQueue = require('../database/temp-queue');
 const baseUrl = process.env.NODE_ENV === 'production' ? process.env.BASE_URL : `http://localhost:${process.env.PORT || 3000}`;
 
+// Helper function to remove country code "91" if it exists
+const removeCountryCode = (mobileNumber) => {
+    return mobileNumber.startsWith('91') ? mobileNumber.slice(2) : mobileNumber;
+};
 
-
-// Endpoint to add a patient to the queue
 // Endpoint to add a patient to the queue
 router.post('/api/queue/add', async (req, res) => {
     try {
-        const { patientId, hospitalId, skipTemplate = false } = req.body; // Default skipTemplate to false
+        const { patientId, hospitalId } = req.body; // Destructure hospitalId from the request body
 
         // First, check if the patient already exists in the queue
         const existingEntry = await Queue.findOne({ patientId });
@@ -27,6 +29,22 @@ router.post('/api/queue/add', async (req, res) => {
             return res.status(404).send('Patient not found.');
         }
 
+        const patientMobileWithoutCountryCode = removeCountryCode(patient.mobile_number);
+        const isInTempQueue = await isNumberInTempQueue(patientMobileWithoutCountryCode);
+        if (isInTempQueue) {
+            console.log('Patient is in the temporary queue, skipping template message.');
+        } else {
+            // Send the template message if the patient is not in the temporary queue
+            await axios.post(`${baseUrl}/send-template-message`, {
+                to: patient.mobile_number // Use the patient's mobile number
+            }, {
+                headers: {
+                    'Authorization': `Bearer ${process.env.BEARER_TOKEN}`,
+                    'Content-Type': 'application/json'
+                }
+            });
+        }
+
         // Now that we have the patient's details, create a new queue entry with them
         const queueEntry = new Queue({
             patientId,
@@ -38,24 +56,26 @@ router.post('/api/queue/add', async (req, res) => {
         // Save the queue entry
         await queueEntry.save();
 
-        // Only send the language selection template if skipTemplate is false
-        if (!skipTemplate) {
-            await axios.post(`${baseUrl}/send-template-message`, {
-                to: patient.mobile_number // Use the patient's mobile number
-            }, {
-                headers: {
-                    'Authorization': `Bearer ${process.env.BEARER_TOKEN}`,
-                    'Content-Type': 'application/json'
-                }
-            });
-        }
-
         res.status(201).send(queueEntry);
     } catch (error) {
         console.error(error);
         res.status(400).send(error.message);
     }
 });
+
+// Function to check if the patient's mobile number is in the temporary queue
+const isNumberInTempQueue = async (mobileNumber) => {
+    try {
+        console.log("Checking if mobile number is in temporary queue:", mobileNumber);
+        const tempQueueEntry = await TempQueue.findOne({ patientMobileNumber: mobileNumber }).exec();
+        console.log("Temp queue entry found:", JSON.stringify(tempQueueEntry, null, 2));  // Log the temp queue entry result
+        return !!tempQueueEntry; // Returns true if an entry is found, otherwise false
+    } catch (error) {
+        console.error("Error checking mobile number in temporary queue:", error);
+        return false;
+    }
+};
+
 
 // Endpoint to remove a patient from the queue or clear the entire queue
 router.delete('/api/queue/remove', async (req, res) => {

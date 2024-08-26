@@ -18,7 +18,9 @@ const baseUrl = process.env.NODE_ENV === 'production' ? process.env.BASE_URL : `
 const sessionStates = {}; // Add this line to track session states
 const fs = require('fs');
 const path = require('path');
-const { transcribeAudio } = require('../bot/gptChat'); // Adjust the path as necessary
+const { transcribeAudio } = require('../bot/gptChat');
+const TempQueue  = require("../database/temp-queue"); // Adjust the path as necessary
+const User = require('../database/users');  // Import the User model
 
 const SESSION_DURATION = 5 * 60 * 1000; // 5 minutes in milliseconds
 const SHORT_MESSAGE_THRESHOLD = 20; // Define what constitutes a short message (in characters)
@@ -28,7 +30,7 @@ const MONITORING_PHASE_DURATION = 120000; // 2 minutes in milliseconds
 const messageBuffers = {}; // Temporary storage for messages
 const inactivityTimers = {}; // Timers for inactivity detection
 const userBehavior = {}; // To track user behavior
-
+const conversationState = {};
 
 const isMobileNumberInQueue = async (mobileNumber) => {
     try {
@@ -174,19 +176,23 @@ function parseWebhookRequest(req) {
 
 
 
-function initializeHistory(from, language = null) {
-    if (!conversationHistory[from]) {
-        conversationHistory[from] = [];
-    }
-
+function initializeHistory(from, language = null, fromMissedCall = false) {
     if (!medicalHistory[from]) {
         medicalHistory[from] = [];
     }
-
-    if (language) {
-        conversationHistory[from].language = language;
-        console.log(`Initialized conversation history for ${from} with language: ${language}`);
+    if (!conversationHistory[from]) {
+        conversationHistory[from] = [];  // Initialize as an array for chat history
+        conversationState[from] = {      // Separate object to track conversation state
+            language: language,
+            name: null,
+            hospitalCode: null,
+            fromMissedCall: fromMissedCall,
+            currentStep: 'name'  // Track the current step for the missed call flow
+        };
+    } else if (language) {
+        conversationState[from].language = language;
     }
+
 }
 
 
@@ -233,8 +239,7 @@ async function sendReply(to, body, messageId) {
 
     return response.data;
 }
-// Webhook endpoint to process incoming messages from WhatsApp
-// Webhook endpoint to process incoming messages from WhatsApp
+
 router.post('/webhook', async (req, res) => {
     console.log('Received webhook:', JSON.stringify(req.body, null, 2));
 
@@ -255,8 +260,6 @@ router.post('/webhook', async (req, res) => {
             console.log('Ignoring message as session has already ended for:', from);
             return res.status(200).send({ success: true, message: 'Session has already ended. Ignoring message.' });
         }
-        // Check if the conversation was started via a missed call
-        const isFromMissedCall = conversationHistory[from]?.fromMissedCall;
 
         // Check if the user has an existing language preference
         const existingLanguage = conversationHistory[from] ? conversationHistory[from].language : null;
@@ -284,16 +287,89 @@ router.post('/webhook', async (req, res) => {
             initializeHistory(from, language); // Ensure history is initialized with the new language
         }
 
-        if (!sessionStartTimes[from]) {
-            const isFromMissedCall = conversationHistory[from]?.fromMissedCall;
+        // If the conversation was initiated by a missed call
+        const isInTempQueue = await isMobileNumberInTempQueue(from);
+        if (isInTempQueue) {
+            if (!conversationHistory[from].currentStep) {
+                conversationHistory[from].currentStep = 'name';
+                await sendTemplateMessage(from, 'name');
+                return res.status(200).send({ success: true, message: 'Language selected, requesting name.' });
+            }
 
-            // Skip the queue check if the conversation was initiated by a missed call
-            if (!isFromMissedCall) {
-                const isInQueue = await isMobileNumberInQueue(from);
-                if (!isInQueue) {
-                    console.log(`Number ${from} is not in queue. Ignoring message.`);
-                    return res.status(200).send({ success: true, message: 'Number not in queue. Ignoring message.' });
+            if (conversationHistory[from].currentStep === 'name') {
+                conversationHistory[from].name = text;
+                console.log("Name received: " + text);
+                conversationHistory[from].currentStep = 'hospitalId';
+                await sendTemplateMessage(from, 'hospitalId');
+                return res.status(200).send({ success: true, message: 'Name received, requesting hospital ID.' });
+            }
+
+            if (conversationHistory[from].currentStep === 'hospitalId') {
+                const hospitalCode = text;  // Get the hospital code from user input
+                try {
+                    // Find the corresponding hospital ID based on the hospital code
+                    const user = await User.findOne({ hospital_code: hospitalCode }).exec();
+
+                    if (!user) {
+                        console.error('No hospital found with the provided hospital code:', hospitalCode);
+                        return res.status(400).send({ error: 'Invalid hospital code provided.' });
+                    }
+
+                    // Save the hospital ID in the conversation history
+                    conversationHistory[from].hospitalId = user.hospital_id;
+                    console.log("Hospital ID found and saved: " + user.hospital_id);
+
+                    // Add the patient to the database
+                    const patientId = await addPatientToDatabase(from);
+                    console.log('Patient ID:', patientId);
+
+                    // Add the patient to the queue
+                    await addPatientToQueue(patientId, user.hospital_id);
+
+                    // Reset currentStep as the initial steps are complete
+                    conversationHistory[from].currentStep = null;
+
+                    // Ensure all conversation metadata is transferred correctly
+                    conversationHistory[from].name = conversationState[from].name;
+                    conversationHistory[from].hospitalId = user.hospital_id;
+                    conversationHistory[from].language = conversationState[from].language;
+
+                    // Set session start time and last message ID
+                    if (!sessionStartTimes[from]) {
+                        sessionStartTimes[from] = new Date();
+                        lastMessageIds[from] = messageId;
+
+                        setTimeout(() => {
+                            endSessionActions(from, lastMessageIds[from]);
+                        }, SESSION_DURATION);
+                    }
+
+                    // Initialize medical history
+                    if (!medicalHistory[from]) {
+                        medicalHistory[from] = []; // Initialize if not already set
+                    }
+                    // Remove the country code from the mobile number before deleting from TempQueue
+                    const mobileNumberWithoutCountryCode = removeCountryCode(from);
+
+                    await TempQueue.deleteOne({ patientMobileNumber: mobileNumberWithoutCountryCode });
+                    console.log('Patient removed from TempQueue:', mobileNumberWithoutCountryCode);
+                    // Transition to normal chat flow
+                    await processAndRespond(from, text);  // Start the session processing
+
+                    return res.status(200).send({ success: true, message: 'Hospital ID received, patient added to queue, and session started.' });
+                } catch (error) {
+                    console.error('Error processing hospital code:', error);
+                    return res.status(500).send({ error: 'Failed to process hospital code.' });
                 }
+            }
+        }
+        // Existing logic for handling sessions not initiated by a missed call
+        if (!sessionStartTimes[from]) {
+            const isInQueue = await isMobileNumberInQueue(from);
+
+            if (!isInQueue && !isInTempQueue) {
+                console.log(`Number ${from} is not in queue or temp queue. Ignoring message.`);
+                return res.status(200).send({ success: true, message: 'Number not in queue or temp queue. Ignoring message.' });
             }
 
             sessionStartTimes[from] = new Date();
@@ -362,31 +438,28 @@ router.post('/webhook', async (req, res) => {
             fs.unlinkSync(audioFilePath); // Cleanup audio file immediately
         }
 
-        // Check if the patient was added via missed call and proceed accordingly
-        if (conversationHistory[from]?.fromMissedCall) {
-            if (isLanguageSelection(text)) {
-                initializeHistory(from, language);
-                await sendTemplateMessage(from, 'name_request_hindi');
-                return res.status(200).send({ success: true, message: 'Name request template sent.' });
+        if (user.aggregationEnabled) {
+            if (!messageBuffers[from]) {
+                messageBuffers[from] = [];
             }
 
-            if (conversationHistory[from] && !conversationHistory[from].name) {
-                conversationHistory[from].name = text;
-                await sendTemplateMessage(from, 'hosptialid_hindi');
-                return res.status(200).send({ success: true, message: 'Hospital ID request template sent.' });
-            }
+            messageBuffers[from].push(userMessage);
 
-            if (conversationHistory[from] && conversationHistory[from].name && !conversationHistory[from].hospitalId) {
-                conversationHistory[from].hospitalId = text;
+            if (userMessage.length < SHORT_MESSAGE_THRESHOLD) {
+                if (inactivityTimers[from]) {
+                    clearTimeout(inactivityTimers[from]);
+                }
 
-                const patientId = await addPatientToDatabase(from);
-                await addPatientToQueue(patientId, conversationHistory[from].hospitalId, true); // Skip the template
-                await processAndRespond(from, ''); // Start with an initial empty message
-
-                return res.status(200).send({ success: true, message: 'Patient added and GPT conversation started.' });
+                inactivityTimers[from] = setTimeout(() => {
+                    processAggregatedMessages(from);
+                }, INACTIVITY_TIMEOUT);
+            } else {
+                if (inactivityTimers[from]) {
+                    clearTimeout(inactivityTimers[from]);
+                }
+                await processAggregatedMessages(from);
             }
         } else {
-            // If not from missed call, handle the conversation as usual
             await processAndRespond(from, userMessage);
         }
 
@@ -397,6 +470,11 @@ router.post('/webhook', async (req, res) => {
         return res.status(500).send({ error: 'Internal Server Error', details: error.message });
     }
 });
+
+
+
+
+
 
 
 // Endpoint to reply to a message
@@ -514,6 +592,23 @@ const processAndRespond = async (from, message) => {
         console.error('Error in chatWithGPT:', error);
     }
 };
+const isMobileNumberInTempQueue = async (mobileNumber) => {
+    try {
+        // Remove the country code "91" if it's present
+        const mobileNumberWithoutCountryCode = mobileNumber.startsWith('91')
+            ? mobileNumber.slice(2)
+            : mobileNumber;
+
+        console.log("Checking if mobile number is in temporary queue:", mobileNumberWithoutCountryCode);
+        const tempQueueEntry = await TempQueue.findOne({ patientMobileNumber: mobileNumberWithoutCountryCode }).exec();
+        console.log("Temp queue entry found:", JSON.stringify(tempQueueEntry, null, 2));  // Log the temp queue entry result
+        return !!tempQueueEntry; // Returns true if an entry is found, otherwise false
+    } catch (error) {
+        console.error("Error checking mobile number in temporary queue:", error);
+        return false;
+    }
+};
+
 
 const sendTemplateMessage = async (to, templateName) => {
     const languageCode = conversationHistory[to].language === 'English' ? 'en' : 'hi';
@@ -602,26 +697,7 @@ const addPatientToQueue = async (patientId, hospitalId) => {
         throw new Error('Failed to add patient to the queue.');
     }
 };
-// Function to check if the incoming message is a language selection
-const isLanguageSelection = (text) => {
-    // Define your logic here. For example, if the text is "English" or "Hindi":
-    const languages = ['English', 'हिन्दी'];
-    return languages.includes(text);
+const removeCountryCode = (mobileNumber) => {
+    return mobileNumber.startsWith('91') ? mobileNumber.slice(2) : mobileNumber;
 };
-
-const getConversationHistory = (callerNumber) => {
-    return conversationHistory[callerNumber] || {};
-};
-
-// Function to set a flag in the conversation history
-const setConversationFlag = (callerNumber, flagName, flagValue) => {
-    if (!conversationHistory[callerNumber]) {
-        conversationHistory[callerNumber] = {};
-    }
-    conversationHistory[callerNumber][flagName] = flagValue;
-};
-module.exports = {
-    getConversationHistory,
-    setConversationFlag,
-    router
-};
+module.exports = router;
