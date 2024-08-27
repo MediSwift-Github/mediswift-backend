@@ -191,8 +191,8 @@ function initializeHistory(from, language = null, fromMissedCall = false) {
         };
     } else if (language) {
         conversationState[from].language = language;
+        conversationHistory[from].language = language; // Ensure language is saved in conversation history
     }
-
 }
 
 
@@ -260,12 +260,14 @@ router.post('/webhook', async (req, res) => {
             console.log('Ignoring message as session has already ended for:', from);
             return res.status(200).send({ success: true, message: 'Session has already ended. Ignoring message.' });
         }
-
+        if (language) {
+            initializeHistory(from, language);
+            console.log(`User ${from} selected language: ${language}`);
+        }
         // Check if the user has an existing language preference
         const existingLanguage = conversationHistory[from] ? conversationHistory[from].language : null;
 
         if (language && existingLanguage && language !== existingLanguage) {
-            // New language selected, reset the conversation
             console.log(`User ${from} switched to a new language: ${language}. Resetting the conversation.`);
 
             // Clear session data
@@ -282,10 +284,14 @@ router.post('/webhook', async (req, res) => {
             initializeHistory(from, language);
         }
 
+// Always ensure the language is set in both conversationHistory and conversationState
         if (language) {
             console.log(`User ${from} switched to language: ${language}`);
             initializeHistory(from, language); // Ensure history is initialized with the new language
+            conversationHistory[from].language = language;
+            conversationState[from].language = language;
         }
+
 
         // If the conversation was initiated by a missed call
         const isInTempQueue = await isMobileNumberInTempQueue(from);
@@ -609,9 +615,8 @@ const isMobileNumberInTempQueue = async (mobileNumber) => {
     }
 };
 
-
 const sendTemplateMessage = async (to, templateName) => {
-    const languageCode = conversationHistory[to].language === 'English' ? 'en' : 'hi';
+    const languageCode = conversationHistory[to]?.language === 'English' ? 'en' : 'hi';  // Use language from conversationHistory
     const templateMap = {
         "name": {
             "en": "name_english",
