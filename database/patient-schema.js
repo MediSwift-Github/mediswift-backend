@@ -13,7 +13,15 @@ const patientSchema = new Schema({
         summaryContent: mongoose.Schema.Types.Mixed, // This will store the JSON summary
         transcription: { type: String, default: '' },
         healthRecord: { type: mongoose.Schema.Types.Mixed, default: {} },
-        patientHandout: { type: mongoose.Schema.Types.Mixed, default: {} }
+        patientHandout: { type: mongoose.Schema.Types.Mixed, default: {} },
+        prescriptions: [{
+            srNo: { type: Number },
+            drug: { type: String, index: true },
+            dosagePerDay: { type: String },
+            days: { type: Number },
+            frequency: { type: String },
+            notes: { type: String }
+        }]
     }],
     hospitalId: { type: Schema.Types.ObjectId, ref: 'Hospital', required: true } // Add this line
 }, { timestamps: true }); // Optionally add timestamps to automatically get createdAt and updatedAt fields

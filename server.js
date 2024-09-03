@@ -13,7 +13,7 @@ const documentationRoute = require('./routes/documentation');
 const saveHealthRecordRouter = require('./routes/saveHealthRecord');
 const patientHandoutRoutes = require('./routes/savePatientHandout');
 const whatsappBot = require('./bot/whatsappbot');
-
+const savePrescriptionsRoute = require('./routes/prescription');
 const missedCallRoute = require('./routes/missed-call');
 
 
@@ -27,7 +27,7 @@ const server = http.createServer(app);
 const corsOptions = {
     origin: function (origin, callback) {
         console.log("Origin attempting to access:", origin);  // Log the origin
-        const allowed = ['http://localhost:3001', 'https://mediswift-frontend.vercel.app','http://localhost:3000','http://localhost:3002']
+        const allowed = ['http://localhost:3001', 'https://mediswift-frontend.vercel.app','http://localhost:3000','http://localhost:3003']
             .some(baseURL => origin && origin.startsWith(baseURL));
         console.log("Allowed:", allowed);  // Log if it's allowed
 
@@ -60,6 +60,8 @@ app.use(whatsappBot);
 app.use(express.json()); // for parsing application/json
 app.use(express.urlencoded({ extended: true })); // for parsing application/x-www-form-urlencoded
 app.use(missedCallRoute);
+app.use(savePrescriptionsRoute);
+
 setupRealtimeUpdates(server);
 
 app.get('/', (req, res) => res.send('MediSwift API Running'));
@@ -69,6 +71,4 @@ server.listen(port, () => {
     console.log(`Server running at http://localhost:${port}`);
 });
 
-// In server.js
-// require('./bot/telegrambot');
 

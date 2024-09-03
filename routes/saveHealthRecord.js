@@ -24,34 +24,46 @@ router.post('/api/saveHealthRecord', async (req, res) => {
         res.status(500).send('Failed to update health record or medical history.');
     }
 });
-
 async function storeHealthRecord(patientId, healthRecord, summaryDate) {
     try {
         const dateStart = new Date(summaryDate);
         const dateEnd = new Date(summaryDate);
         dateEnd.setDate(dateEnd.getDate() + 1);
 
-        const updateResult = await Patient.findOneAndUpdate({
+        // Try to find the session summary first
+        const existingSummary = await Patient.findOne({
             _id: patientId,
             'sessionSummaries.summaryDate': {
                 $gte: dateStart,
                 $lt: dateEnd
             }
-        }, {
-            $set: { 'sessionSummaries.$.healthRecord': healthRecord }
-        }, { new: true, upsert: true });
+        });
 
-        if (!updateResult) {
+        if (existingSummary) {
+            // If summary exists, update the health record
+            await Patient.updateOne({
+                _id: patientId,
+                'sessionSummaries.summaryDate': {
+                    $gte: dateStart,
+                    $lt: dateEnd
+                }
+            }, {
+                $set: { 'sessionSummaries.$.healthRecord': healthRecord }
+            });
+            console.log("Successfully updated existing health record.");
+        } else {
+            // If summary does not exist, create a new summary entry
             await Patient.findByIdAndUpdate(patientId, {
                 $push: { 'sessionSummaries': { summaryDate, healthRecord } }
             }, { new: true });
+            console.log("Successfully created and stored new health record.");
         }
-        console.log("Successfully stored health record.");
     } catch (error) {
         console.error("Error storing health record:", error);
         throw error; // Rethrow to be caught by the calling function
     }
 }
+
 
 async function updateMedicalHistory(patientId, healthRecord) {
     try {
