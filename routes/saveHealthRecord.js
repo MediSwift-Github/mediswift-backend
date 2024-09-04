@@ -5,25 +5,29 @@ const { convertMedicalSummaryToNotes } = require('../bot/gptChat');  // Ensure g
 
 // Endpoint to save the health record of a patient and update medical history
 router.post('/api/saveHealthRecord', async (req, res) => {
+    console.log("Received request to /api/saveHealthRecord with method:", req.method);
+    console.log("Request body:", req.body);
+
     const { patientId, healthRecord, summaryDate } = req.body;
 
     if (!patientId || !healthRecord || !summaryDate) {
+        console.log("Missing parameters: patientId, healthRecord, or summaryDate");
         return res.status(400).send('Missing patient ID, health record data, or summary date.');
     }
 
     try {
-        // Store session summary
         await storeHealthRecord(patientId, healthRecord, summaryDate);
-
-        // Update medical history
         await updateMedicalHistory(patientId, healthRecord);
 
+        console.log("Successfully updated health record and medical history.");
         res.json({ status: 'success', message: 'Health Record and Medical History updated successfully!', patientId: patientId });
     } catch (error) {
         console.error("Failed to update health record or medical history:", error);
         res.status(500).send('Failed to update health record or medical history.');
     }
 });
+
+
 async function storeHealthRecord(patientId, healthRecord, summaryDate) {
     try {
         const dateStart = new Date(summaryDate);
