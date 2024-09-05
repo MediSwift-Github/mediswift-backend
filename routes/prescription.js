@@ -117,7 +117,7 @@ async function generatePrescriptionPdf(patientId, prescriptions) {
         const doc = new PDFDocument({ margin: 50 });
         const pdfFileName = `${patient.name.replace(/\s+/g, '_')}_prescription.pdf`;
         const pdfPath = path.join(__dirname, '..', 'uploads', pdfFileName);
-        const writeStream = fs.createWriteStream(pdfPath)
+        const writeStream = fs.createWriteStream(pdfPath);
         const logoPath = path.join(__dirname, '..', 'uploads', 'MediSwift.png');
         return new Promise((resolve, reject) => {
             doc.pipe(writeStream);
@@ -140,39 +140,39 @@ async function generatePrescriptionPdf(patientId, prescriptions) {
                 .text('Prescriptions:', { underline: true })
                 .moveDown(0.5);
 
-            // Define table headers
+            // Define table headers with updated column names
             const tableTop = doc.y;
-            const itemX = 50;
-            const drugX = 100;
+            const srNoX = 50;
+            const medicationX = 100;
             const dosageX = 220;
-            const daysX = 320;
-            const freqX = 370;
-            const notesX = 450;
+            const perDayX = 270;
+            const daysX = 370;
+            const instructionsX = 450;
 
             doc
                 .fontSize(10)
-                .text('Sr. No', itemX, tableTop)
-                .text('Drug', drugX, tableTop)
-                .text('Dosage Per Day', dosageX, tableTop)
-                .text('Days', daysX, tableTop)
-                .text('Frequency', freqX, tableTop)
-                .text('Notes', notesX, tableTop);
+                .text('Sr. No', srNoX, tableTop)
+                .text('Medication', medicationX, tableTop)
+                .text('Dosage', dosageX, tableTop)
+                .text('Times Per Day', perDayX, tableTop)
+                .text('No. of Days', daysX, tableTop)
+                .text('Instructions', instructionsX, tableTop);
 
-            doc.moveTo(itemX, tableTop + 15)
+            doc.moveTo(srNoX, tableTop + 15)
                 .lineTo(550, tableTop + 15)
                 .stroke();
 
-            // Add prescription rows
+            // Add prescription rows with updated field names
             prescriptions.forEach((prescription, i) => {
                 const y = tableTop + 30 + (i * 20);
                 doc
                     .fontSize(10)
-                    .text(prescription.srNo, itemX, y)
-                    .text(prescription.drug, drugX, y)
+                    .text(prescription.srNo, srNoX, y)
+                    .text(prescription.drug, medicationX, y) // drug is now medication
                     .text(prescription.dosagePerDay, dosageX, y)
+                    .text(prescription.frequency, perDayX, y) // frequency is per day
                     .text(prescription.days, daysX, y)
-                    .text(prescription.frequency, freqX, y)
-                    .text(prescription.notes, notesX, y);
+                    .text(prescription.notes, instructionsX, y); // notes is now instructions
             });
 
             doc.moveDown(2);
@@ -180,13 +180,13 @@ async function generatePrescriptionPdf(patientId, prescriptions) {
             // Add doctor's signature and additional notes, properly aligned and spaced
             doc
                 .fontSize(12)
-                .text('Doctor\'s Signature:', itemX, doc.y)
+                .text('Doctor\'s Signature:', srNoX, doc.y)
                 .moveDown(2)
-                .text('_______________________', itemX, doc.y - 10) // Adjust for proper alignment
+                .text('_______________________', srNoX, doc.y - 10) // Adjust for proper alignment
                 .moveDown(1)
-                .text('Additional Notes:', itemX)
+                .text('Additional Notes:', srNoX)
                 .moveDown(2)
-                .text('_______________________', itemX, doc.y - 10); // Adjust for proper alignment
+                .text('_______________________', srNoX, doc.y - 10); // Adjust for proper alignment
 
             // Finalize the PDF and end the stream
             doc.end();
