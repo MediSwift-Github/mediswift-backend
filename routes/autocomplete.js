@@ -38,12 +38,17 @@ router.get('/api/autocomplete', cors(), async (req, res) => {
             },
             {
                 $project: {
-                    product_name: 1
+                    product_name: 1,
+                    Instructions: 1,  // Include Instructions in the results
+                    medicine_type: 1  // Include medicine_type in the results
                 }
             }
         ]);
 
         console.log("Medications found:", medications.length);  // Log the number of medications found
+        medications.forEach(med => {
+            console.log(`Medicine: ${med.product_name}, Instructions: ${med.Instructions}, Type: ${med.medicine_type}`);
+        });
 
         res.status(200).json(medications);
     } catch (error) {
