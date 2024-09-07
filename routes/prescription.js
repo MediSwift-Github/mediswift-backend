@@ -122,26 +122,28 @@ async function generatePrescriptionPdf(patientId, prescriptions) {
         return new Promise((resolve, reject) => {
             doc.pipe(writeStream);
 
-            // Add content to the PDF
+            // Add the logo and title
             doc.image(logoPath, 50, 45, { width: 100 }).moveDown(2);
             doc.fontSize(20).text('Prescription', { align: 'center' }).moveDown(1.5);
 
-            // Add patient details with adequate space from the logo
+            // Add patient details dynamically
+            let currentY = doc.y + 10; // Ensure space from the title
             doc
                 .fontSize(12)
-                .text(`Name: ${patient.name}`, 50, 200)  // Start text after the logo
+                .text(`Name: ${patient.name}`, 50, currentY)
                 .text(`Phone Number: ${patient.mobile_number}`)
                 .text(`Date: ${new Date().toLocaleDateString()}`)
                 .moveDown(2);
 
-            // Add a table for prescriptions
+            // Adjust currentY to align the table
+            currentY = doc.y+30;
+
+            // Add table headers
             doc
                 .fontSize(14)
                 .text('Prescriptions:', { underline: true })
                 .moveDown(0.5);
 
-            // Define table headers with updated column names
-            const tableTop = doc.y;
             const srNoX = 50;
             const medicationX = 100;
             const dosageX = 220;
@@ -151,44 +153,77 @@ async function generatePrescriptionPdf(patientId, prescriptions) {
 
             doc
                 .fontSize(10)
-                .text('Sr. No', srNoX, tableTop)
-                .text('Medication', medicationX, tableTop)
-                .text('Dosage', dosageX, tableTop)
-                .text('Times Per Day', perDayX, tableTop)
-                .text('No. of Days', daysX, tableTop)
-                .text('Instructions', instructionsX, tableTop);
+                .text('Sr. No', srNoX, currentY)
+                .text('Medication', medicationX, currentY)
+                .text('Dosage', dosageX, currentY)
+                .text('Times Per Day', perDayX, currentY)
+                .text('No. of Days', daysX, currentY)
+                .text('Instructions', instructionsX, currentY);
 
-            doc.moveTo(srNoX, tableTop + 15)
-                .lineTo(550, tableTop + 15)
-                .stroke();
+            doc.moveTo(srNoX, currentY + 15).lineTo(550, currentY + 15).stroke();
+            currentY += 20; // Adjust for next row
 
-            // Add prescription rows with updated field names
+            // Add prescription rows dynamically
             prescriptions.forEach((prescription, i) => {
-                const y = tableTop + 30 + (i * 20);
+                const defaultRowHeight = 20; // Default minimum row height
+
+                // Measure text heights for "Medication" and "Instructions"
+                const medicationHeight = doc.heightOfString(prescription.drug, {
+                    width: dosageX - medicationX - 10,
+                    align: 'left'
+                });
+
+                const instructionsHeight = doc.heightOfString(prescription.notes, {
+                    width: 550 - instructionsX,
+                    align: 'left'
+                });
+
+                // Determine the maximum height of the row
+                const rowHeight = Math.max(medicationHeight, instructionsHeight, defaultRowHeight);
+
+                // Render the text at the calculated current Y position
                 doc
                     .fontSize(10)
-                    .text(prescription.srNo, srNoX, y)
-                    .text(prescription.drug, medicationX, y) // drug is now medication
-                    .text(prescription.dosagePerDay, dosageX, y)
-                    .text(prescription.frequency, perDayX, y) // frequency is per day
-                    .text(prescription.days, daysX, y)
-                    .text(prescription.notes, instructionsX, y); // notes is now instructions
+                    .text(prescription.srNo, srNoX, currentY)
+                    .text(prescription.dosagePerDay, dosageX, currentY)
+                    .text(prescription.frequency, perDayX, currentY)
+                    .text(prescription.days, daysX, currentY);
+
+                // Wrap long medication names
+                doc.text(prescription.drug, medicationX, currentY, {
+                    width: dosageX - medicationX - 10,
+                    align: 'left'
+                });
+
+                // Wrap long instructions
+                doc.text(prescription.notes, instructionsX, currentY, {
+                    width: 550 - instructionsX,
+                    align: 'left'
+                });
+
+                // Draw a line below the row
+                doc.moveTo(srNoX, currentY + rowHeight).lineTo(550, currentY + rowHeight).stroke();
+
+                // Increment the current Y position by the height of the current row
+                currentY += rowHeight + 10; // Add some extra padding between rows
             });
 
-            doc.moveDown(2);
+            // Space between table and footer
+            currentY += 20;
+            doc.moveTo(srNoX, currentY).stroke();
 
-            // Add doctor's signature and additional notes, properly aligned and spaced
+            // Add doctor's signature and additional notes after the table
             doc
                 .fontSize(12)
-                .text('Doctor\'s Signature:', srNoX, doc.y)
+                .text('Doctor\'s Signature:', srNoX, currentY)
                 .moveDown(2)
-                .text('_______________________', srNoX, doc.y - 10) // Adjust for proper alignment
+                .text('_______________________', srNoX, doc.y)
                 .moveDown(1)
                 .text('Additional Notes:', srNoX)
                 .moveDown(2)
-                .text('_______________________', srNoX, doc.y - 10); // Adjust for proper alignment
+                .text('_______________________', srNoX, doc.y);
 
-            // Finalize the PDF and end the stream
+            // Finalize the PDF
             doc.end();
 
             writeStream.on('finish', () => {
