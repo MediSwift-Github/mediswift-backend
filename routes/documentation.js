@@ -47,7 +47,43 @@ router.get('/getSummary', async (req, res) => {
 });
 
 async function createEHRentry(summaryContent, transcription) {
-    return await createOpenAIResponse("You are a highly proficient medical assistant with extensive knowledge in medical jargon, designed to output comprehensive and detailed JSON. Given a summary of the purpose of visit received through a text conversation before the consultation and a transcription of the conversation between doctor and patient, output a structured JSON object suitable for a medical record(doctor's notes). Ensure the output is highly detailed, technically accurate, and includes every single detail mentioned in the transcription and summary. The JSON object should cover all medical details of the visit. Output only the JSON object. Language of the health record should be English", summaryContent, transcription);
+    const jsonSchema = {
+        "type": "object",
+        "properties": {
+            "purpose_of_visit": { "type": "string" },
+            "chronic_diseases": { "type": ["string", "null"] },
+            "acute_symptoms": { "type": "string" },
+            "allergies": { "type": ["string", "null"] },
+            "medications": { "type": ["string", "null"] },
+            "previous_treatments": { "type": ["string", "null"] },
+            "patient_concerns": { "type": ["string", "null"] },
+            "infectious_disease_exposure": { "type": ["string", "null"] },
+            "nutritional_status": { "type": ["string", "null"] },
+            "family_medical_history": { "type": ["string", "null"] },
+            "lifestyle_factors": { "type": ["string", "null"] },
+            "other_relevant_medical_history": { "type": ["string", "null"] }
+        },
+        "required": [
+            "purpose_of_visit",
+            "chronic_diseases",
+            "acute_symptoms",
+            "allergies",
+            "medications",
+            "previous_treatments",
+            "patient_concerns",
+            "infectious_disease_exposure",
+            "nutritional_status",
+            "family_medical_history",
+            "lifestyle_factors",
+            "other_relevant_medical_history"
+        ],
+        "additionalProperties": false
+    };
+
+    return await createOpenAIResponse(
+        "You are a highly proficient medical assistant with extensive knowledge in medical jargon, designed to output comprehensive and detailed JSON. Given a summary of the purpose of visit received through a text conversation before the consultation and a transcription of the conversation between doctor and patient, output a structured JSON object suitable for a medical record (doctor's notes). Ensure the output is highly detailed, technically accurate, and includes every single detail mentioned in the transcription and summary. The JSON object should cover all medical details of the visit. Output only the JSON object.",
+        summaryContent, transcription, jsonSchema
+    );
 }
 
 async function createHandout(summaryContent, transcription, userId) {
@@ -66,7 +102,7 @@ async function createHandout(summaryContent, transcription, userId) {
     return await createOpenAIResponse(systemInstruction, summaryContent, transcription);
 }
 
-async function createOpenAIResponse(systemInstruction, summaryContent, transcription) {
+async function createOpenAIResponse(systemInstruction, summaryContent, transcription, jsonSchema = null) {
     const systemPrompt = {
         role: "system",
         content: systemInstruction
@@ -78,11 +114,25 @@ async function createOpenAIResponse(systemInstruction, summaryContent, transcrip
     };
 
     try {
-        const response = await openai.chat.completions.create({
-            model: "gpt-4o-mini",
+        const requestOptions = {
+            model: "gpt-4o-2024-08-06",
             messages: [systemPrompt, userPrompt],
-            response_format: { "type": "json_object" }
-        });
+        };
+
+        if (jsonSchema) {
+            requestOptions.response_format = {
+                type: "json_schema",
+                json_schema: {
+                    name: "medical_notes",
+                    strict: true,
+                    schema: jsonSchema
+                }
+            };
+        } else {
+            requestOptions.response_format = { type: "json_object" };
+        }
+
+        const response = await openai.chat.completions.create(requestOptions);
 
         const jsonResponse = response.choices[0].message.content;
         const parsedResponse = JSON.parse(jsonResponse);

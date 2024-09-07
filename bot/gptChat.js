@@ -56,31 +56,74 @@ async function chatWithGPT(prompt, conversationHistory, medicalHistory, language
         return { success: false, error: error.message, conversationHistory };
     }
 }
+
 async function summarizeConversation(conversationHistory) {
+    // Log the initial conversation history
+    // console.log("Original conversation history:", conversationHistory);
+
     // Filter out system messages before summarization
     const filteredHistory = conversationHistory.filter(message => message.role !== "system");
-    console.log(filteredHistory);
+    // console.log("Filtered conversation history (without system messages):", filteredHistory);
+
     // Construct a prompt that asks GPT to summarize the conversation
     const summaryPrompt = {
         role: "system",
-        content: "You are part of a virtual medical assistant designed to aid doctors. A chatbot was deployed to talk to the patient to gather detailed information about their concerns, symptoms, medical history, etc., to help the doctor understand the purpose of the visit while providing all the details retrieved during the chat. Your job is to understand the conversation and make detailed clinical notes that include all relevant medical details without adding any noise or unwanted details. The notes should be structured and include sections for chronic diseases, acute diseases, allergies, and other relevant medical history based on the conversation. Follow these steps: 1. Extract and list all relevant information from the conversation in a structured manner. 2. Create a comprehensive medical history based on the extracted information. 3. Compile detailed clinical notes, ensuring they are accurate and technically sound, suitable for a doctor's review. Ensure the total length of the clinical notes can be read within 1-2 minutes. This is the conversation:"
-};
+        content: "You are part of a virtual medical assistant designed to aid doctors. A chatbot was deployed to talk to the patient to gather detailed information about their concerns, symptoms, medical history, etc., to help the doctor understand the purpose of the visit while providing all the details retrieved during the chat. Your job is to understand the conversation and extract all relevant information from the conversation in a structured JSON format that follows a predefined schema."
+    };
+
+    // Log the summary prompt
+    // console.log("Summary prompt to be sent:", summaryPrompt);
 
     // Add the summary prompt at the beginning of the conversation history
     filteredHistory.unshift(summaryPrompt);
 
+    // Define the JSON schema to enforce in the structured output
+    const jsonSchema = {
+        "type": "object",
+        "properties": {
+            "purpose_of_visit": { "type": "string" },
+            "chronic_diseases": { "type": ["string", "null"] },
+            "acute_symptoms": { "type": "string" },
+            "allergies": { "type": ["string", "null"] },
+            "medications": { "type": ["string", "null"] },
+            "previous_treatments": { "type": ["string", "null"] },
+            "patient_concerns": { "type": ["string", "null"] },
+            "infectious_disease_exposure": { "type": ["string", "null"] },
+            "nutritional_status": { "type": ["string", "null"] },
+            "family_medical_history": { "type": ["string", "null"] },
+            "lifestyle_factors": { "type": ["string", "null"] },
+            "other_relevant_medical_history": { "type": ["string", "null"] }
+        },
+        "required": ["purpose_of_visit", "acute_symptoms"],
+        "additionalProperties": false
+    };
+
+    // Log the final payload to be sent to OpenAI
+    // console.log("Final payload (filtered history with prompt):", filteredHistory);
+
     try {
         const response = await openai.chat.completions.create({
-            model: "gpt-4o-mini",
+            model: "gpt-4o-2024-08-06",
             messages: filteredHistory, // Use the filtered and updated history here
+            response_format: {
+                type: "json_schema",
+                json_schema: {
+                    name: "medical_summary",
+                    strict: true,
+                    schema: jsonSchema
+                }
+            }
         });
 
-        const summaryMessage = response.choices[0].message.content;
-        console.log(summaryMessage);
-        // Call convertSummaryToJSON right after the summary is generated
-        await convertSummaryToJSON(summaryMessage);
-        return { success: true, content: summaryMessage };
+        // Log the full response from OpenAI
+        // console.log("OpenAI response:", response);
+
+        const structuredSummary = response.choices[0].message.content;
+        // console.log("Generated structured summary:", structuredSummary);
+
+        return { success: true, content: structuredSummary };
     } catch (error) {
+        // Log any errors that occur
         console.error('Error generating summary with OpenAI:', error);
         return { success: false, error: error.message };
     }
@@ -148,17 +191,37 @@ async function transcribeAudio(audioFilePath) {
         return { success: false, error: error.message };
     }
 }
-
 async function convertMedicalSummaryToNotes(summary, medicalHistory) {
     // Check if medicalHistory is empty or not provided and adjust the historyContext message accordingly
     const historyContext = medicalHistory && medicalHistory.length > 0
         ? medicalHistory.map(entry => `${entry.visitDate}: ${JSON.stringify(entry.notes)}`).join('\n')
         : "No prior medical history available.";
 
+    // Define the same JSON schema for the response as before
+    const jsonSchema = {
+        "type": "object",
+        "properties": {
+            "purpose_of_visit": { "type": "string" },
+            "chronic_diseases": { "type": ["string", "null"] },
+            "acute_symptoms": { "type": "string" },
+            "allergies": { "type": ["string", "null"] },
+            "medications": { "type": ["string", "null"] },
+            "previous_treatments": { "type": ["string", "null"] },
+            "patient_concerns": { "type": ["string", "null"] },
+            "infectious_disease_exposure": { "type": ["string", "null"] },
+            "nutritional_status": { "type": ["string", "null"] },
+            "family_medical_history": { "type": ["string", "null"] },
+            "lifestyle_factors": { "type": ["string", "null"] },
+            "other_relevant_medical_history": { "type": ["string", "null"] }
+        },
+        "required": ["purpose_of_visit", "acute_symptoms"],
+        "additionalProperties": false
+    };
+
     try {
         // Make a request to the API with handling for empty or nonexistent medical history
         const response = await openai.chat.completions.create({
-            model: "gpt-4o-mini",
+            model: "gpt-4o-2024-08-06",
             messages: [
                 {
                     role: "system",
@@ -166,15 +229,24 @@ async function convertMedicalSummaryToNotes(summary, medicalHistory) {
                 },
                 {
                     role: "system",
-                    content: "Based on this history, generate detailed notes for the new visit provided in the user input. Use medical jargon and ensure the output is in JSON format with the following fields: purposeOfVisit, chronicDiseases, acuteSymptoms, allergies, medications, previousTreatments, patientConcerns, infectiousDiseaseExposure, nutritionalStatus, familyMedicalHistory, and lifestyleFactors."
+                    content: "Based on this history, generate detailed notes for the new visit provided in the user input. Use medical jargon and ensure the output is in JSON format with the following fields: purpose_of_visit, chronic_diseases, acute_symptoms, allergies, medications, previous_treatments, patient_concerns, infectious_disease_exposure, nutritional_status, family_medical_history, lifestyle_factors, and other_relevant_medical_history."
                 },
                 {
                     role: "user",
                     content: summary
                 }
             ],
-            response_format: { type: "json_object" },
+            response_format: {
+                type: "json_schema",
+                json_schema: {
+                    name: "medical_notes",
+                    strict: true,
+                    schema: jsonSchema
+                }
+            }
         });
+
+        // Log and return the structured notes
         console.log('Converted Notes:', response.choices[0].message.content);
         return response.choices[0].message.content;
     } catch (error) {
@@ -182,7 +254,6 @@ async function convertMedicalSummaryToNotes(summary, medicalHistory) {
         return null;
     }
 }
-
 
 module.exports = {
     chatWithGPT,
