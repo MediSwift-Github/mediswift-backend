@@ -15,6 +15,7 @@ const patientHandoutRoutes = require('./routes/savePatientHandout');
 const whatsappBot = require('./bot/whatsappbot');
 const savePrescriptionsRoute = require('./routes/prescription');
 const missedCallRoute = require('./routes/missed-call');
+const autocompleteRoutes = require('./routes/autocomplete'); // Adjust the path as necessary
 
 
 
@@ -61,6 +62,7 @@ app.use(express.json()); // for parsing application/json
 app.use(express.urlencoded({ extended: true })); // for parsing application/x-www-form-urlencoded
 app.use(missedCallRoute);
 app.use(savePrescriptionsRoute);
+app.use(autocompleteRoutes);
 
 setupRealtimeUpdates(server);
 
