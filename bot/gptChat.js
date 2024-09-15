@@ -4,6 +4,7 @@ const axios = require('axios');
 const fs = require('fs');
 const FormData = require('form-data');
 const path = require('path');
+const { transcribeAudio } = require('../routes/transcribe-audio'); // Import the transcribeAudio function
 
 const openai = new OpenAI(process.env.OPENAI_API_KEY);
 
@@ -149,48 +150,7 @@ async function convertSummaryToJSON(summary) {
 }
 
 // Function to transcribe audio using the OpenAI Whisper API
-async function transcribeAudio(audioFilePath) {
-    console.log('TranscribeAudio called with path:', audioFilePath);
 
-    try {
-        const fullPath = path.resolve(audioFilePath);
-        console.log('Resolved full path:', fullPath);
-
-        if (!fs.existsSync(fullPath)) {
-            console.error('File does not exist at path:', fullPath);
-            return { success: false, error: 'File does not exist' };
-        }
-
-        const formData = new FormData();
-        formData.append('file', fs.createReadStream(fullPath));
-        formData.append('model', 'whisper-1');
-        // Log the headers and API URL before the request
-        const apiURL = 'https://api.openai.com/v1/audio/transcriptions';
-        console.log('API URL:', apiURL);
-        console.log('Headers:', { ...formData.getHeaders(), 'Authorization': `Bearer ${process.env.OPENAI_API_KEY}` });
-
-        console.log('Sending request to OpenAI for transcription...');
-        const response = await axios.post(apiURL, formData, {
-            headers: {
-                ...formData.getHeaders(),
-                'Authorization': `Bearer ${process.env.OPENAI_API_KEY}`
-            },
-            responseType: 'json'
-        });
-
-        console.log('Transcription received:', response.data);
-        return { success: true, content: response.data.text };
-    } catch (error) {
-        console.error('Error transcribing audio with OpenAI:', error.message);
-
-        // Log the error response from OpenAI, if available
-        if (error.response) {
-            console.error('OpenAI response:', error.response.data);
-        }
-
-        return { success: false, error: error.message };
-    }
-}
 async function convertMedicalSummaryToNotes(summary, medicalHistory) {
     // Check if medicalHistory is empty or not provided and adjust the historyContext message accordingly
     const historyContext = medicalHistory && medicalHistory.length > 0

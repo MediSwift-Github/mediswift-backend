@@ -25,14 +25,24 @@ router.post('/api/audio/upload', upload.single('audioFile'), async (req, res) =>
         return res.status(400).send('No file uploaded.');
     }
 
-
     try {
         const transcriptionResult = await transcribeAudio(req.file.path);
+
         if (transcriptionResult.success) {
             const patientId = req.body.patientId;
             const summaryDate = req.body.summaryDate ? new Date(req.body.summaryDate) : new Date();
 
-            const storageSuccess = await storeTranscription(patientId, transcriptionResult.content, summaryDate);
+            // Check if content is an array (from diarization) and handle accordingly
+            let contentToStore = transcriptionResult.content;
+
+            if (Array.isArray(transcriptionResult.content)) {
+                contentToStore = transcriptionResult.content
+                    .map(segment => `Speaker ${segment.speaker}: ${segment.text}`)
+                    .join('\n');
+            }
+
+            const storageSuccess = await storeTranscription(patientId, contentToStore, summaryDate);
+
             if (!storageSuccess) {
                 throw new Error('Failed to store transcription.');
             }
@@ -42,7 +52,7 @@ router.post('/api/audio/upload', upload.single('audioFile'), async (req, res) =>
                 transcription: transcriptionResult.content
             });
 
-            deleteFile(req.file.path); // Cleanup: delete the audio file after processing
+            deleteFile(req.file.path);
         } else {
             throw new Error(transcriptionResult.error);
         }

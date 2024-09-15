@@ -16,6 +16,7 @@ const whatsappBot = require('./bot/whatsappbot');
 const savePrescriptionsRoute = require('./routes/prescription');
 const missedCallRoute = require('./routes/missed-call');
 const autocompleteRoutes = require('./routes/autocomplete'); // Adjust the path as necessary
+const { router: audioTranscriptionRouter } = require('./routes/transcribe-audio');
 
 
 
@@ -63,6 +64,7 @@ app.use(express.urlencoded({ extended: true })); // for parsing application/x-ww
 app.use(missedCallRoute);
 app.use(savePrescriptionsRoute);
 app.use(autocompleteRoutes);
+app.use(audioTranscriptionRouter);
 
 setupRealtimeUpdates(server);
 
