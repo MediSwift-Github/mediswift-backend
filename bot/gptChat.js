@@ -95,7 +95,20 @@ async function summarizeConversation(conversationHistory) {
             "lifestyle_factors": { "type": ["string", "null"] },
             "other_relevant_medical_history": { "type": ["string", "null"] }
         },
-        "required": ["purpose_of_visit", "acute_symptoms"],
+        "required": [
+            "purpose_of_visit",
+            "chronic_diseases",
+            "acute_symptoms",
+            "allergies",
+            "medications",
+            "previous_treatments",
+            "patient_concerns",
+            "infectious_disease_exposure",
+            "nutritional_status",
+            "family_medical_history",
+            "lifestyle_factors",
+            "other_relevant_medical_history"
+        ],
         "additionalProperties": false
     };
 
@@ -174,7 +187,20 @@ async function convertMedicalSummaryToNotes(summary, medicalHistory) {
             "lifestyle_factors": { "type": ["string", "null"] },
             "other_relevant_medical_history": { "type": ["string", "null"] }
         },
-        "required": ["purpose_of_visit", "acute_symptoms"],
+        "required": [
+            "purpose_of_visit",
+            "chronic_diseases",
+            "acute_symptoms",
+            "allergies",
+            "medications",
+            "previous_treatments",
+            "patient_concerns",
+            "infectious_disease_exposure",
+            "nutritional_status",
+            "family_medical_history",
+            "lifestyle_factors",
+            "other_relevant_medical_history"
+        ],
         "additionalProperties": false
     };
 
